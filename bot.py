@@ -6,6 +6,7 @@ import nest_asyncio
 import random
 from keep_alive import keep_alive
 
+# Cho phép nest_asyncio để tránh xung đột vòng lặp
 nest_asyncio.apply()
 
 BOT_TOKEN = "8064426886:AAHNez92dmsVQBB6yQp65k_pjPwiJT-SBEI"
@@ -17,12 +18,10 @@ media_groups = {}
 processing_tasks = {}
 
 async def start(update: Update, context: CallbackContext):
-    if not update.message:
-        return  
-    if update.effective_chat.type != "private":
-        return  
+    if not update.message or update.effective_chat.type != "private":
+        return
     await update.message.reply_text(
-        "**👋 Chào mừng bạnn!**\n"
+        "**👋 Chào mừng bạn!**\n"
         "**🔗 Gửi link bất kỳ để rút gọn.**\n"
         "**📷 Chuyển tiếp bài viết kèm ảnh/video, bot sẽ giữ nguyên caption & rút gọn link trong caption.**\n"
         "**💬 Mọi thắc mắc, hãy liên hệ admin.**",
@@ -30,7 +29,6 @@ async def start(update: Update, context: CallbackContext):
     )
 
 async def format_text(text: str) -> str:
-    """Rút gọn link, in đậm nội dung, và gạch ngang link"""
     lines = text.splitlines()
     new_lines = []
     for line in lines:
@@ -57,8 +55,7 @@ async def format_text(text: str) -> str:
     return "\n".join(new_lines)
 
 async def process_media_group(media_group_id: str, user_chat_id: int):
-    """Xử lý bài viết có nhiều ảnh/video mà không bị chia nhỏ"""
-    await asyncio.sleep(random.uniform(3, 5))  # Thêm delay ngẫu nhiên 3-5 giây
+    await asyncio.sleep(random.uniform(3, 5))
     messages = media_groups.pop(media_group_id, [])
     if not messages:
         return
@@ -70,7 +67,6 @@ async def process_media_group(media_group_id: str, user_chat_id: int):
     for i, message in enumerate(messages):
         if i == 0 and message.caption:
             caption = await format_text(message.caption)
-
         if message.photo:
             file_id = message.photo[-1].file_id
             media.append(InputMediaPhoto(media=file_id, caption=caption if i == 0 else None, parse_mode="HTML"))
@@ -82,22 +78,18 @@ async def process_media_group(media_group_id: str, user_chat_id: int):
         await bot.send_media_group(chat_id=user_chat_id, media=media)
 
 async def shorten_link(update: Update, context: CallbackContext):
-    if not update.message:
-        return  
-    if update.effective_chat.type != "private":
-        return  
+    if not update.message or update.effective_chat.type != "private":
+        return
 
     if update.message.media_group_id:
         mgid = update.message.media_group_id
-
         if mgid not in media_groups:
             media_groups[mgid] = []
             processing_tasks[mgid] = asyncio.create_task(process_media_group(mgid, update.effective_chat.id))
-
         media_groups[mgid].append(update.message)
         return
 
-    elif update.message.text and update.message.text.startswith("http"):
+    if update.message.text and update.message.text.startswith("http"):
         params = {"api": API_KEY, "url": update.message.text.strip(), "format": "text"}
         response = requests.get(API_URL, params=params)
         if response.status_code == 200:
@@ -109,25 +101,27 @@ async def shorten_link(update: Update, context: CallbackContext):
                 '⚠️<b>Kênh xem không cần vượt :</b> <a href="https://t.me/sachkhongchuu/299">ấn vào đây</a>'
             )
             await update.message.reply_text(message, parse_mode="HTML")
+        return
 
-    elif update.message.forward_origin:
+    if update.message.forward_origin:
         caption = update.message.caption or ""
         new_caption = await format_text(caption)
         await update.message.copy(chat_id=update.effective_chat.id, caption=new_caption, parse_mode="HTML")
 
-async def main():
-    # Khởi chạy Flask để giữ ứng dụng luôn "sống" (Flask sẽ chạy trong một thread riêng)
+def main():
+    # 1) Giữ bot luôn "sống" qua Flask
     keep_alive()
 
+    # 2) Khởi tạo và đăng ký handlers
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, shorten_link))
-    app.add_handler(MessageHandler(filters.FORWARDED, shorten_link))
-    app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO, shorten_link))
+    app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.FORWARDED, shorten_link))
 
     print("✅ Bot đang chạy...")
-    # Sử dụng close_loop=False để tránh đóng vòng lặp sự kiện khi polling kết thúc
-    await app.run_polling(close_loop=False)
+
+    # 3) Bắt đầu polling, không đóng loop khi kết thúc
+    app.run_polling(close_loop=False)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
