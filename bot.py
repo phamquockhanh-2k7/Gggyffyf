@@ -125,10 +125,10 @@ async def main():
     print("✅ Bot đang chạy...")
 
     # Đảm bảo Flask và bot Telegram cùng chạy trong vòng lặp sự kiện
-    loop = asyncio.get_event_loop()
-    loop.create_task(app.run_polling())  # Tạo task cho bot chạy
-    keep_alive()  # Giữ bot chạy với Flask
-    loop.run_forever()  # Chạy vòng lặp sự kiện mãi mãi
+    await app.run_polling()  # Tự động quản lý vòng lặp sự kiện
+
+    # Giữ bot chạy với Flask (hoặc bất kỳ công cụ giữ bot chạy nào)
+    keep_alive()  # Giữ bot hoạt động trong Flask nếu cần thiết
 
 if __name__ == "__main__":
     asyncio.run(main())
