@@ -1,4 +1,5 @@
 import requests
+import json
 from telegram import Bot, Update, InputMediaPhoto, InputMediaVideo
 from telegram.ext import Application, MessageHandler, CommandHandler, filters, CallbackContext
 import asyncio
@@ -12,11 +13,43 @@ nest_asyncio.apply()
 BOT_TOKEN = "8064426886:AAHNez92dmsVQBB6yQp65k_pjPwiJT-SBEI"
 API_KEY = "5d2e33c19847dea76f4fdb49695fd81aa669af86"
 API_URL = "https://vuotlink.vip/api"
+GROUP_CHAT_ID = "@dutxjgdiyfutj"  # ID nhóm Telegram đã được thay thế
 
 bot = Bot(token=BOT_TOKEN)
 media_groups = {}
 processing_tasks = {}
 
+# Lưu ID vào file JSON
+def save_id_to_json(message_id, file_name="message_ids.json"):
+    try:
+        # Đọc dữ liệu hiện tại trong file JSON
+        try:
+            with open(file_name, "r") as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            data = []
+
+        # Thêm ID mới vào danh sách
+        data.append(message_id)
+
+        # Ghi lại vào file JSON
+        with open(file_name, "w") as f:
+            json.dump(data, f, indent=4)
+
+    except Exception as e:
+        print(f"Lỗi khi lưu ID vào file JSON: {e}")
+
+# Gửi file JSON vào nhóm Telegram
+async def send_file_to_group(file_name, group_chat_id):
+    try:
+        # Gửi file JSON vào nhóm
+        with open(file_name, "rb") as f:
+            await bot.send_document(chat_id=group_chat_id, document=f)
+        print(f"Đã gửi file {file_name} tới nhóm {group_chat_id}")
+    except Exception as e:
+        print(f"Lỗi khi gửi file vào nhóm: {e}")
+
+# Khởi tạo lệnh start
 async def start(update: Update, context: CallbackContext):
     if not update.message or update.effective_chat.type != "private":
         return
@@ -28,6 +61,7 @@ async def start(update: Update, context: CallbackContext):
         parse_mode="Markdown"
     )
 
+# Xử lý văn bản
 async def format_text(text: str) -> str:
     lines = text.splitlines()
     new_lines = []
@@ -54,6 +88,7 @@ async def format_text(text: str) -> str:
 
     return "\n".join(new_lines)
 
+# Xử lý nhóm media (ảnh/video)
 async def process_media_group(mgid: str, chat_id: int):
     await asyncio.sleep(random.uniform(3, 5))
     group = media_groups.pop(mgid, [])
@@ -83,6 +118,7 @@ async def process_media_group(mgid: str, chat_id: int):
         print(f"Lỗi khi gửi media_group: {e}")
         await bot.send_message(chat_id=chat_id, text="⚠️ Gửi bài viết thất bại. Có thể do file lỗi hoặc Telegram bị giới hạn.")
 
+# Xử lý gửi link rút gọn
 async def shorten_link(update: Update, context: CallbackContext):
     if not update.message or update.effective_chat.type != "private":
         return
@@ -114,6 +150,10 @@ async def shorten_link(update: Update, context: CallbackContext):
         new_caption = await format_text(caption)
         await update.message.copy(chat_id=update.effective_chat.id, caption=new_caption, parse_mode="HTML")
 
+        # Lưu ID của bài viết vào file JSON
+        save_id_to_json(update.message.message_id)
+
+# Hàm chính
 def main():
     # 1) Giữ bot luôn "sống" qua Flask
     keep_alive()
@@ -128,6 +168,9 @@ def main():
 
     # 3) Bắt đầu polling, không đóng loop khi kết thúc
     app.run_polling(close_loop=False)
+
+    # 4) Gửi file JSON vào nhóm Telegram
+    send_file_to_group('message_ids.json', GROUP_CHAT_ID)
 
 if __name__ == "__main__":
     main()
