@@ -105,7 +105,7 @@ async def shorten_link(update: Update, context: CallbackContext):
             message = (
                 "📢 <b>Bạn có link rút gọn mới</b>\n"
                 f"🔗 <b>Link gốc:</b> <s>{update.message.text}</s>\n"
-                f"🔍 <b>Link rút gọn:</b> <s>{short_link}</s>\n\n"
+                f"🔍 <b>Link rút gọn:</b> {short_link}\n\n"
                 '⚠️<b>Kênh xem không cần vượt :</b> <a href="https://t.me/sachkhongchuu/299">ấn vào đây</a>'
             )
             await update.message.reply_text(message, parse_mode="HTML")
