@@ -116,6 +116,9 @@ async def shorten_link(update: Update, context: CallbackContext):
         await update.message.copy(chat_id=update.effective_chat.id, caption=new_caption, parse_mode="HTML")
 
 async def main():
+    # Khởi chạy Flask để giữ ứng dụng luôn "sống" (Flask sẽ chạy trong một thread riêng)
+    keep_alive()
+
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, shorten_link))
@@ -123,12 +126,8 @@ async def main():
     app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO, shorten_link))
 
     print("✅ Bot đang chạy...")
-
-    # Đảm bảo Flask và bot Telegram cùng chạy trong vòng lặp sự kiện
-    await app.run_polling()  # Tự động quản lý vòng lặp sự kiện
-
-    # Giữ bot chạy với Flask (hoặc bất kỳ công cụ giữ bot chạy nào)
-    keep_alive()  # Giữ bot hoạt động trong Flask nếu cần thiết
+    # Sử dụng close_loop=False để tránh đóng vòng lặp sự kiện khi polling kết thúc
+    await app.run_polling(close_loop=False)
 
 if __name__ == "__main__":
     asyncio.run(main())
