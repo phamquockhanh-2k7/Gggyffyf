@@ -29,7 +29,6 @@ async def start(update: Update, context: CallbackContext):
         parse_mode="Markdown"
     )
 
-
 async def format_text(text: str) -> str:
     """Rút gọn link, in đậm nội dung, và gạch ngang link"""
     lines = text.splitlines()
@@ -117,7 +116,6 @@ async def shorten_link(update: Update, context: CallbackContext):
         await update.message.copy(chat_id=update.effective_chat.id, caption=new_caption, parse_mode="HTML")
 
 async def main():
-    keep_alive()  # Giữ bot chạy
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, shorten_link))
@@ -126,7 +124,11 @@ async def main():
 
     print("✅ Bot đang chạy...")
 
-    await app.run_polling()
+    # Đảm bảo Flask và bot Telegram cùng chạy trong vòng lặp sự kiện
+    loop = asyncio.get_event_loop()
+    loop.create_task(app.run_polling())  # Tạo task cho bot chạy
+    keep_alive()  # Giữ bot chạy với Flask
+    loop.run_forever()  # Chạy vòng lặp sự kiện mãi mãi
 
 if __name__ == "__main__":
     asyncio.run(main())
