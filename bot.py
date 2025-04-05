@@ -23,15 +23,12 @@ async def start(update: Update, context: CallbackContext):
         return  
     await update.message.reply_text(
         "**👋 Chào mừng bạn!**\n"
-
-"
         "**🔗 Gửi link bất kỳ để rút gọn.**\n"
-"
         "**📷 Chuyển tiếp bài viết kèm ảnh/video, bot sẽ giữ nguyên caption & rút gọn link trong caption.**\n"
-"
         "**💬 Mọi thắc mắc, hãy liên hệ admin.**",
         parse_mode="Markdown"
     )
+
 
 async def format_text(text: str) -> str:
     """Rút gọn link, in đậm nội dung, và gạch ngang link"""
