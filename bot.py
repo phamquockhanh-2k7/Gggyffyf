@@ -1,55 +1,72 @@
+import firebase_admin
+from firebase_admin import credentials, db
 import time
 from telegram import Bot, Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
-from firebase import firebase
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+import asyncio
 
-# Thiết lập bot và kết nối với Firebase
+# 🔐 TOKEN BOT TELEGRAM
 BOT_TOKEN = "8064426886:AAHNez92dmsVQBB6yQp65k_pjPwiJT-SBEI"
+
+# 🔗 CẤU HÌNH FIREBASE
+cred = credentials.Certificate("firebase-credentials.json")
+firebase_admin.initialize_app(cred, {
+    'databaseURL': 'https://bot-telegram-99852-default-rtdb.firebaseio.com'
+})
+
+# 🤖 Tạo bot
 bot = Bot(token=BOT_TOKEN)
 
-# Firebase URL để lấy danh sách người dùng
-FIREBASE_URL = "https://bot-telegram-99852-default-rtdb.firebaseio.com"
-firebase = firebase.FirebaseApplication(FIREBASE_URL, None)
+# 📥 Lấy danh sách người dùng từ Firebase
+def get_users():
+    ref = db.reference('/users')
+    return ref.get() or {}
 
-async def send_bulk_message(message_text: str):
-    # Lấy tất cả user_id từ Firebase
-    users_ref = firebase.get('/users', None)  # Lấy toàn bộ dữ liệu người dùng từ Firebase
+# 📤 Gửi tin nhắn đến tất cả user đã lưu
+async def send_bulk_message(text: str):
+    users = get_users()
+    for user_id in users:
+        try:
+            await bot.send_message(chat_id=user_id, text=text)
+            await asyncio.sleep(2)  # Delay 2 giây để tránh bị chặn spam
+        except Exception as e:
+            print(f"❌ Không thể gửi đến {user_id}: {e}")
 
-    if users_ref:
-        for user_id, user_data in users_ref.items():
-            try:
-                # Gửi tin nhắn đến từng user_id
-                await bot.send_message(chat_id=user_id, text=message_text)
+# 📨 Lưu user mỗi khi họ nhắn tin
+async def save_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    ref = db.reference(f'/users/{user_id}')
+    ref.set(True)
 
-                # Thêm delay để tránh spam
-                time.sleep(2)  # Delay 2 giây giữa các tin nhắn
-            except Exception as e:
-                print(f"Không thể gửi tin nhắn đến {user_id}: {e}")
+# ✅ Lệnh /guilink - bật chế độ nhận nội dung gửi đi
+broadcast_messages = {}
 
-async def guilink(update: Update, context: CallbackContext):
-    if not update.message or update.effective_chat.type != "private":
-        return
+async def guilink(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await save_user(update, context)
+    broadcast_messages[update.effective_user.id] = True
+    await update.message.reply_text("✉️ Gửi nội dung bạn muốn gửi cho tất cả người dùng:")
 
-    if update.message.text:
-        # Lấy nội dung tin nhắn từ người dùng
-        message_text = update.message.text
+# 📨 Nhận tin nhắn để gửi đi
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    await save_user(update, context)
 
-        # Gửi tin nhắn tới tất cả người dùng đã từng sử dụng bot
-        await send_bulk_message(message_text)
+    if broadcast_messages.get(user_id):
+        del broadcast_messages[user_id]
+        await update.message.reply_text("🚀 Đang gửi nội dung đến tất cả người dùng...")
+        await send_bulk_message(update.message.text)
+        await update.message.reply_text("✅ Đã gửi xong!")
+    else:
+        await update.message.reply_text("💡 Gửi /guilink trước nếu bạn muốn gửi tin nhắn hàng loạt.")
 
-        # Thông báo cho người dùng đã gửi thành công
-        await update.message.reply_text("✅ Tin nhắn đã được gửi đến tất cả người dùng!")
-
+# ▶️ Chạy bot
 def main():
-    # Khởi tạo ứng dụng Telegram
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # Đăng ký handler cho lệnh /guilink và gửi tin nhắn
     app.add_handler(CommandHandler("guilink", guilink))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("✅ Bot đang chạy...")
-
-    # Bắt đầu polling
+    print("🤖 Bot đang chạy...")
     app.run_polling()
 
 if __name__ == "__main__":
