@@ -1,57 +1,100 @@
+import random
+import string
 import requests
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+import time
+from telegram import Update, InputMediaPhoto, InputMediaVideo
+from telegram.ext import Updater, MessageHandler, Filters, CommandHandler, CallbackContext
 
-# 🔑 TOKEN BOT VÀ LINK FIREBASE
-BOT_TOKEN = "8064426886:AAEtdQ_tUBNd3BMrPuHgd_k20azPTxcC-5I"
-FIREBASE_URL = "https://bot-telegram-99852-default-rtdb.firebaseio.com"
+BOT_TOKEN = "7851783179:AAGvKfRo42CNyCmd4qUyg0GZ9wKIhDFAJaA"
+FIREBASE_URL = "https://bot-telegram-99852-default-rtdb.firebaseio.com/shared"
 
-# Biến tạm để xác định người nào đang gửi tin để broadcast
-waiting_for_message = {}
+user_files = {}
+user_alias = {}
 
-# Khi user bắt đầu bot
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    url = f"{FIREBASE_URL}/users/{user_id}.json"
-    requests.put(url, json={"joined": True})
-    await update.message.reply_text("✅ Bạn đã được thêm vào danh sách nhận tin.")
+def generate_alias(length=12):
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
 
-# Khi admin gõ /guilink
-async def guilink(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    waiting_for_message[user_id] = True
-    await update.message.reply_text("📨 Gửi nội dung bạn muốn phát cho mọi người.")
-
-# Xử lý tin nhắn kế tiếp để phát tán
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    if waiting_for_message.get(user_id):
-        del waiting_for_message[user_id]
-
-        msg = update.message.text or update.message.caption or "(tin nhắn không văn bản)"
-        await update.message.reply_text("🔄 Đang gửi...")
-
-        res = requests.get(f"{FIREBASE_URL}/users.json")
-        if res.status_code == 200:
-            users = res.json()
-            count = 0
-            for uid in users.keys():
-                try:
-                    await context.bot.send_message(chat_id=uid, text=msg)
-                    count += 1
-                except:
-                    pass
-            await update.message.reply_text(f"✅ Đã gửi đến {count} người dùng.")
+def start(update: Update, context: CallbackContext):
+    args = context.args
+    if args:
+        alias = args[0]
+        url = f"{FIREBASE_URL}/{alias}.json"
+        res = requests.get(url)
+        if res.status_code == 200 and res.json():
+            media_items = res.json()
+            media_group = []
+            for item in media_items:
+                if item["type"] == "photo":
+                    media_group.append(InputMediaPhoto(item["file_id"]))
+                elif item["type"] == "video":
+                    media_group.append(InputMediaVideo(item["file_id"]))
+            if media_group:
+                for i in range(0, len(media_group), 10):
+                    update.message.reply_media_group(media_group[i:i+10])
+                    time.sleep(1)
+            else:
+                update.message.reply_text("Không có nội dung để hiển thị.")
         else:
-            await update.message.reply_text("❌ Không lấy được danh sách người dùng.")
+            update.message.reply_text("❌ Không tìm thấy dữ liệu với mã này.")
     else:
-        await update.message.reply_text("⚠️ Gõ /guilink trước khi gửi nội dung.")
+        update.message.reply_text("📥 Gửi ảnh hoặc video cho mình. Khi xong thì nhắn /done để lưu và lấy link.")
 
-# Chạy bot
-if __name__ == "__main__":
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("guilink", guilink))
-    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
-    app.run_polling()
+def handle_media(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    print(f"Nhận media từ user {user_id}")
+
+    if user_id not in user_files:
+        user_files[user_id] = []
+        user_alias[user_id] = generate_alias()
+
+    if update.message.photo:
+        file_id = update.message.photo[-1].file_id
+        entry = {"file_id": file_id, "type": "photo"}
+        print(f"Đã nhận ảnh: {file_id}")
+    elif update.message.video:
+        file_id = update.message.video.file_id
+        entry = {"file_id": file_id, "type": "video"}
+        print(f"Đã nhận video: {file_id}")
+    else:
+        print("Không phải ảnh hay video")
+        return
+
+    if entry not in user_files[user_id]:
+        user_files[user_id].append(entry)
+        print(f"Đã thêm media vào user_files: {user_files[user_id]}")
+
+def done(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    files = user_files.get(user_id, [])
+    alias = user_alias.get(user_id)
+
+    if not files or not alias:
+        update.message.reply_text("❌ Bạn chưa gửi ảnh hoặc video nào.")
+        return
+
+    url = f"{FIREBASE_URL}/{alias}.json"
+    response = requests.put(url, json=files)
+    print(f"Firebase response: {response.status_code} - {response.text}")
+
+    if response.status_code == 200:
+        link = f"https://t.me/filebotstorage_bot?start={alias}"
+        update.message.reply_text(f"✅ Đã lưu thành công!\n🔗 Link truy cập: {link}")
+    else:
+        update.message.reply_text("❌ Đã có lỗi xảy ra khi lưu dữ liệu.")
+    
+    del user_files[user_id]
+    del user_alias[user_id]
+
+def main():
+    updater = Updater(BOT_TOKEN, use_context=True)
+    dp = updater.dispatcher
+
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CommandHandler("done", done))
+    dp.add_handler(MessageHandler(Filters.photo | Filters.video, handle_media))
+
+    updater.start_polling()
+    updater.idle()
+
+if __name__ == '__main__':
+    main()
