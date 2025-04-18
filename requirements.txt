@@ -2,5 +2,6 @@ requests==2.32.3
 python-telegram-bot==22.0
 nest-asyncio==1.6.0
 keep_alive==0.0.1
+firebase-admin==6.0.0
 flask
 
