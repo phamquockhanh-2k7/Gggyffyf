@@ -3,6 +3,8 @@ import string
 import requests
 import time
 import asyncio
+import threading
+from flask import Flask
 from telegram import Update, InputMediaPhoto, InputMediaVideo
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
@@ -11,6 +13,16 @@ FIREBASE_URL = "https://bot-telegram-99852-default-rtdb.firebaseio.com/shared"
 
 user_files = {}
 user_alias = {}
+
+# 🟢 Flask server để giữ Koyeb "alive"
+app_server = Flask(__name__)
+
+@app_server.route('/')
+def home():
+    return 'Bot is running!'
+
+def start_flask():
+    app_server.run(host='0.0.0.0', port=8000)
 
 def generate_alias(length=12):
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
@@ -79,7 +91,7 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     del user_files[user_id]
     del user_alias[user_id]
 
-async def main():
+async def telegram_main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("done", done))
@@ -87,6 +99,5 @@ async def main():
     await app.run_polling()
 
 if __name__ == "__main__":
-    import nest_asyncio
-    nest_asyncio.apply()
-    asyncio.run(main())
+    threading.Thread(target=start_flask).start()
+    asyncio.run(telegram_main())
