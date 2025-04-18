@@ -3,7 +3,7 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
 # 🔑 TOKEN BOT VÀ LINK FIREBASE
-BOT_TOKEN = "8064426886:AAHNez92dmsVQBB6yQp65k_pjPwiJT-SBEI"
+BOT_TOKEN = "8064426886:AAEtdQ_tUBNd3BMrPuHgd_k20azPTxcC-5I"
 FIREBASE_URL = "https://bot-telegram-99852-default-rtdb.firebaseio.com"
 
 # Biến tạm để xác định người nào đang gửi tin để broadcast
