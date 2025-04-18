@@ -6,27 +6,27 @@ import asyncio
 import threading
 from flask import Flask
 from telegram import Update, InputMediaPhoto, InputMediaVideo
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram.ext import (
+    ApplicationBuilder,
+    MessageHandler,
+    CommandHandler,
+    ContextTypes,
+    filters,
+)
 
+# Cấu hình bot
 BOT_TOKEN = "7851783179:AAGvKfRo42CNyCmd4qUyg0GZ9wKIhDFAJaA"
 FIREBASE_URL = "https://bot-telegram-99852-default-rtdb.firebaseio.com/shared"
 
+# Biến toàn cục
 user_files = {}
 user_alias = {}
 
-# 🟢 Flask server để giữ Koyeb "alive"
-app_server = Flask(__name__)
-
-@app_server.route('/')
-def home():
-    return 'Bot is running!'
-
-def start_flask():
-    app_server.run(host='0.0.0.0', port=8000)
-
+# Hàm tạo alias ngẫu nhiên
 def generate_alias(length=12):
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
 
+# /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if args:
@@ -52,8 +52,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("📥 Gửi ảnh hoặc video cho mình. Khi xong thì nhắn /done để lưu và lấy link.")
 
+# Xử lý media
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
+    user_id = update.effective_user.id
     if user_id not in user_files:
         user_files[user_id] = []
         user_alias[user_id] = generate_alias()
@@ -70,8 +71,9 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if entry not in user_files[user_id]:
         user_files[user_id].append(entry)
 
+# /done
 async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
+    user_id = update.effective_user.id
     files = user_files.get(user_id, [])
     alias = user_alias.get(user_id)
 
@@ -91,13 +93,33 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     del user_files[user_id]
     del user_alias[user_id]
 
+# Flask web server (cho health check)
+app_web = Flask('')
+
+@app_web.route('/')
+def home():
+    return "Bot is running!"
+
+def start_flask():
+    app_web.run(host='0.0.0.0', port=8000)
+
+# Chạy Telegram bot
 async def telegram_main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("done", done))
     app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO, handle_media))
+
+    print("Bot đang chạy...")
     await app.run_polling()
 
-if __name__ == "__main__":
+# Main entry
+if __name__ == '__main__':
     threading.Thread(target=start_flask).start()
-    asyncio.run(telegram_main())
+
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+        asyncio.ensure_future(telegram_main())
+    else:
+        loop.run_until_complete(telegram_main())
