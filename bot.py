@@ -8,7 +8,7 @@ from keep_alive import keep_alive
 
 nest_asyncio.apply()
 
-BOT_TOKEN = "8064426886:AAGiR-ghFQNBvOOA-f9rKFGmHySbFMchmDE"
+BOT_TOKEN = "8064426886:AAFAWxoIKjiyTGG_DxcXFXDUizHZyANldE4"
 API_KEY = "5d2e33c19847dea76f4fdb49695fd81aa669af86"
 API_URL = "https://vuotlink.vip/api"
 
