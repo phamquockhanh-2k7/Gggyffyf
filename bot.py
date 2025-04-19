@@ -3,13 +3,7 @@ import string
 import requests
 import asyncio
 from telegram import Update, InputMediaPhoto, InputMediaVideo
-from telegram.ext import (
-    ApplicationBuilder,
-    MessageHandler,
-    CommandHandler,
-    ContextTypes,
-    filters,
-)
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
 # Cấu hình bot
 BOT_TOKEN = "8064426886:AAGiR-ghFQNBvOOA-f9rKFGmHySbFMchmDE"
@@ -90,7 +84,7 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     del user_files[user_id]
     del user_alias[user_id]
 
-# Chạy Telegram bot
+# Hàm chính để khởi chạy bot
 async def telegram_main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
@@ -103,5 +97,4 @@ async def telegram_main():
 
 # Main entry
 if __name__ == '__main__':
-    # Chạy Telegram Bot trực tiếp mà không cần Flask
     asyncio.run(telegram_main())
