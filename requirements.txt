@@ -1,4 +1,4 @@
-python-telegram-bot==20.1
+python-telegram-bot[webhooks]==20.1
 aiohttp
 requests==2.32.3
 firebase-admin==6.0.0
