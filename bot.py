@@ -1,10 +1,7 @@
 import random
 import string
 import requests
-import time
 import asyncio
-import threading
-from flask import Flask
 from telegram import Update, InputMediaPhoto, InputMediaVideo
 from telegram.ext import (
     ApplicationBuilder,
@@ -93,16 +90,6 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     del user_files[user_id]
     del user_alias[user_id]
 
-# Flask web server (cho health check)
-app_web = Flask('')
-
-@app_web.route('/')
-def home():
-    return "Bot is running!"
-
-def start_flask():
-    app_web.run(host='0.0.0.0', port=8000)
-
 # Chạy Telegram bot
 async def telegram_main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
@@ -116,7 +103,5 @@ async def telegram_main():
 
 # Main entry
 if __name__ == '__main__':
-    threading.Thread(target=start_flask).start()
-
-    # Dùng asyncio.run thay vì tự điều khiển event loop
+    # Chạy Telegram Bot trực tiếp mà không cần Flask
     asyncio.run(telegram_main())
