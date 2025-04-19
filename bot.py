@@ -1,7 +1,9 @@
 import random
 import string
-import aiohttp  # Sử dụng aiohttp thay cho requests
+import requests
 import asyncio
+import nest_asyncio
+
 from telegram import Update, InputMediaPhoto, InputMediaVideo
 from telegram.ext import (
     ApplicationBuilder,
@@ -29,26 +31,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if args:
         alias = args[0]
         url = f"{FIREBASE_URL}/{alias}.json"
-        
-        # Sử dụng aiohttp để gửi yêu cầu bất đồng bộ
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as res:
-                if res.status == 200:
-                    media_items = await res.json()
-                    media_group = []
-                    for item in media_items:
-                        if item["type"] == "photo":
-                            media_group.append(InputMediaPhoto(item["file_id"]))
-                        elif item["type"] == "video":
-                            media_group.append(InputMediaVideo(item["file_id"]))
-                    if media_group:
-                        for i in range(0, len(media_group), 10):
-                            await update.message.reply_media_group(media_group[i:i+10])
-                            await asyncio.sleep(1)
-                    else:
-                        await update.message.reply_text("Không có nội dung để hiển thị.")
-                else:
-                    await update.message.reply_text("❌ Không tìm thấy dữ liệu với mã này.")
+        res = requests.get(url)
+        if res.status_code == 200 and res.json():
+            media_items = res.json()
+            media_group = []
+            for item in media_items:
+                if item["type"] == "photo":
+                    media_group.append(InputMediaPhoto(item["file_id"]))
+                elif item["type"] == "video":
+                    media_group.append(InputMediaVideo(item["file_id"]))
+            if media_group:
+                for i in range(0, len(media_group), 10):
+                    await update.message.reply_media_group(media_group[i:i+10])
+                    await asyncio.sleep(1)
+            else:
+                await update.message.reply_text("Không có nội dung để hiển thị.")
+        else:
+            await update.message.reply_text("❌ Không tìm thấy dữ liệu với mã này.")
     else:
         await update.message.reply_text("📥 Gửi ảnh hoặc video cho mình. Khi xong thì nhắn /done để lưu và lấy link.")
 
@@ -82,15 +81,13 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     url = f"{FIREBASE_URL}/{alias}.json"
-    
-    # Sử dụng aiohttp để gửi yêu cầu bất đồng bộ
-    async with aiohttp.ClientSession() as session:
-        async with session.put(url, json=files) as response:
-            if response.status == 200:
-                link = f"https://t.me/filebotstorage_bot?start={alias}"
-                await update.message.reply_text(f"✅ Đã lưu thành công!\n🔗 Link truy cập: {link}")
-            else:
-                await update.message.reply_text("❌ Đã có lỗi xảy ra khi lưu dữ liệu.")
+    response = requests.put(url, json=files)
+
+    if response.status_code == 200:
+        link = f"https://t.me/filebotstorage_bot?start={alias}"
+        await update.message.reply_text(f"✅ Đã lưu thành công!\n🔗 Link truy cập: {link}")
+    else:
+        await update.message.reply_text("❌ Đã có lỗi xảy ra khi lưu dữ liệu.")
 
     del user_files[user_id]
     del user_alias[user_id]
@@ -106,7 +103,8 @@ async def telegram_main():
     print("Bot đang chạy...")
     await app.run_polling()
 
-# Main entry
+# Main
 if __name__ == '__main__':
-    # Chạy Telegram Bot trực tiếp mà không cần Flask
-    asyncio.run(telegram_main())
+    nest_asyncio.apply()
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(telegram_main())
