@@ -20,7 +20,7 @@ async def start(update: Update, context: CallbackContext):
     if not update.message or update.effective_chat.type != "private":
         return
     await update.message.reply_text(
-        "**👋 Chào mừng bạn🙃😍**\n"
+        "**👋 Chào mừng bạn🙃.😍**\n"
         "**🔗 Gửi link bất kỳ để rút gọn.**\n"
         "**📷 Chuyển tiếp bài viết kèm ảnh/video, bot sẽ giữ nguyên caption & rút gọn link trong caption.**\n"
         "**💬 Mọi thắc mắc, hãy liên hệ admin.**",
