@@ -5,7 +5,6 @@ import time
 import asyncio
 import threading
 from flask import Flask
-from datetime import datetime, timedelta
 from telegram import Update, InputMediaPhoto, InputMediaVideo
 from telegram.ext import (
     ApplicationBuilder,
@@ -15,29 +14,19 @@ from telegram.ext import (
     filters,
 )
 
-# ===== CẤU HÌNH =====
+# Cấu hình bot
 BOT_TOKEN = "8064426886:AAGiR-ghFQNBvOOA-f9rKFGmHySbFMchmDE"
 FIREBASE_URL = "https://bot-telegram-99852-default-rtdb.firebaseio.com/shared"
-ADMIN_PASSWORD = "191122"
 
-# ===== BIẾN TOÀN CỤC =====
+# Biến toàn cục
 user_files = {}
 user_alias = {}
-admin_users = {}  # Lưu user_id và thời gian xác minh admin
 
-# ===== HÀM HỖ TRỢ =====
+# Hàm tạo alias ngẫu nhiên
 def generate_alias(length=12):
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
 
-def is_admin(user_id):
-    if user_id in admin_users:
-        if datetime.now() < admin_users[user_id]:
-            return True
-        else:
-            del admin_users[user_id]  # Hết hạn quyền admin
-    return False
-
-# ===== LỆNH /start =====
+# /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if args:
@@ -63,7 +52,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("📥 Gửi ảnh hoặc video cho mình. Khi xong thì nhắn /done để lưu và lấy link.")
 
-# ===== XỬ LÝ MEDIA =====
+# Xử lý media
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in user_files:
@@ -82,7 +71,7 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if entry not in user_files[user_id]:
         user_files[user_id].append(entry)
 
-# ===== LỆNH /done =====
+# /done
 async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     files = user_files.get(user_id, [])
@@ -104,30 +93,8 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     del user_files[user_id]
     del user_alias[user_id]
 
-# ===== LỆNH /admin =====
-async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not context.args:
-        await update.message.reply_text("🛡 Gửi mật khẩu như sau: `/admin 191122`", parse_mode="Markdown")
-        return
-
-    password = context.args[0]
-    if password == ADMIN_PASSWORD:
-        admin_users[user_id] = datetime.now() + timedelta(hours=24)
-        await update.message.reply_text("✅ Bạn đã được cấp quyền admin trong 24 giờ.")
-    else:
-        await update.message.reply_text("❌ Sai mật khẩu.")
-
-# ===== LỆNH /abc =====
-async def abc(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if is_admin(user_id):
-        await update.message.reply_text("✅ Bạn là admin!")
-    else:
-        await update.message.reply_text("🚫 Lệnh này chỉ dành cho admin. Dùng /admin để xác minh.")
-
-# ===== FLASK CHO HEALTH CHECK =====
-app_web = Flask(__name__)
+# Flask web server (cho health check)
+app_web = Flask('')
 
 @app_web.route('/')
 def home():
@@ -136,20 +103,20 @@ def home():
 def start_flask():
     app_web.run(host='0.0.0.0', port=8000)
 
-# ===== CHẠY TELEGRAM BOT =====
+# Chạy Telegram bot
 async def telegram_main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("done", done))
-    app.add_handler(CommandHandler("admin", admin))
-    app.add_handler(CommandHandler("abc", abc))
     app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO, handle_media))
 
-    print("✅ Bot đang chạy...")
+    print("Bot đang chạy...")
     await app.run_polling()
 
-# ===== MAIN =====
+# Main entry
 if __name__ == '__main__':
     threading.Thread(target=start_flask).start()
+
+    # Dùng asyncio.run thay vì tự điều khiển event loop
     asyncio.run(telegram_main())
