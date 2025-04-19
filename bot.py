@@ -1,33 +1,29 @@
 import requests
 from telegram import Bot, Update, InputMediaPhoto, InputMediaVideo
 from telegram.ext import Application, MessageHandler, CommandHandler, filters, CallbackContext
-import asyncio
+from flask import Flask, request
+import telegram
 import nest_asyncio
+import asyncio
+import random
 from keep_alive import keep_alive
-import logging
 
 # Cho phép nest_asyncio để tránh xung đột vòng lặp
 nest_asyncio.apply()
 
+# Cấu hình bot
 BOT_TOKEN = "8064426886:AAFAWxoIKjiyTGG_DxcXFXDUizHZyANldE4"
 API_KEY = "5d2e33c19847dea76f4fdb49695fd81aa669af86"
 API_URL = "https://vuotlink.vip/api"
 
+# Khởi tạo bot và Flask
 bot = Bot(token=BOT_TOKEN)
+app = Flask(__name__)
+
 media_groups = {}
 processing_tasks = {}
 
-async def start(update: Update, context: CallbackContext):
-    if not update.message or update.effective_chat.type != "private":
-        return
-    await update.message.reply_text(
-        "**👋 Chào mừng bạn🙃!😍**\n"
-        "**🔗 Gửi link bất kỳ để rút gọn.**\n"
-        "**📷 Chuyển tiếp bài viết kèm ảnh/video, bot sẽ giữ nguyên caption & rút gọn link trong caption.**\n"
-        "**💬 Mọi thắc mắc, hãy liên hệ admin.**",
-        parse_mode="Markdown"
-    )
-
+# Hàm format lại text và rút gọn link
 async def format_text(text: str) -> str:
     lines = text.splitlines()
     new_lines = []
@@ -54,6 +50,7 @@ async def format_text(text: str) -> str:
 
     return "\n".join(new_lines)
 
+# Hàm xử lý nhóm media
 async def process_media_group(mgid: str, chat_id: int):
     await asyncio.sleep(random.uniform(3, 5))
     group = media_groups.pop(mgid, [])
@@ -83,6 +80,7 @@ async def process_media_group(mgid: str, chat_id: int):
         print(f"Lỗi khi gửi media_group: {e}")
         await bot.send_message(chat_id=chat_id, text="⚠️ Gửi bài viết thất bại. Có thể do file lỗi hoặc Telegram bị giới hạn.")
 
+# Hàm rút gọn link và xử lý văn bản
 async def shorten_link(update: Update, context: CallbackContext):
     if not update.message or update.effective_chat.type != "private":
         return
@@ -114,26 +112,22 @@ async def shorten_link(update: Update, context: CallbackContext):
         new_caption = await format_text(caption)
         await update.message.copy(chat_id=update.effective_chat.id, caption=new_caption, parse_mode="HTML")
 
-def main():
-    # Cấu hình webhook
+# Cấu hình Flask để tiếp nhận webhook
+@app.route(f'/webhook/{BOT_TOKEN}', methods=['POST'])
+def webhook():
+    json_str = request.get_data().decode("UTF-8")
+    update = telegram.Update.de_json(json_str, bot)
+    # Xử lý update ở đây
+    asyncio.run(shorten_link(update, None))  # Thay thế logic xử lý khi có update
+    return 'OK'
+
+# Cấu hình webhook với Telegram API
+def set_webhook():
     WEBHOOK_URL = f"https://bewildered-wenda-happyboy2k777-413cd6df.koyeb.app/webhook/{BOT_TOKEN}"
-
-    # 1) Giữ bot luôn "sống" qua Flask
-    keep_alive()
-
-    # 2) Khởi tạo và đăng ký handlers
-    app = Application.builder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, shorten_link))
-    app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.FORWARDED, shorten_link))
-
-    # Cài đặt webhook cho bot
     bot.set_webhook(WEBHOOK_URL)
 
-    print("✅ Bot đang chạy...")
-
-    # 3) Đừng dùng app.run_polling() nữa, vì bot đang chạy với webhook
-    app.run_webhook(listen="0.0.0.0", port=8000, url_path=f"webhook/{BOT_TOKEN}")
-
+# Chạy Flask server và webhook
 if __name__ == "__main__":
-    main()
+    keep_alive()
+    set_webhook()
+    app.run(host='0.0.0.0', port=8000)
