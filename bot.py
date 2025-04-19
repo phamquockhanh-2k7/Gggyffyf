@@ -1,110 +1,133 @@
-import random
-import string
 import requests
+from telegram import Bot, Update, InputMediaPhoto, InputMediaVideo
+from telegram.ext import Application, MessageHandler, CommandHandler, filters, CallbackContext
 import asyncio
 import nest_asyncio
+import random
+from keep_alive import keep_alive
 
-from telegram import Update, InputMediaPhoto, InputMediaVideo
-from telegram.ext import (
-    ApplicationBuilder,
-    MessageHandler,
-    CommandHandler,
-    ContextTypes,
-    filters,
-)
+# Cho phép nest_asyncio để tránh xung đột vòng lặp
+nest_asyncio.apply()
 
-# Cấu hình bot
-BOT_TOKEN = "8064426886:AAGiR-ghFQNBvOOA-f9rKFGmHySbFMchmDE"
-FIREBASE_URL = "https://bot-telegram-99852-default-rtdb.firebaseio.com/shared"
+BOT_TOKEN = "8064426886:AAHNez92dmsVQBB6yQp65k_pjPwiJT-SBEI"
+API_KEY = "5d2e33c19847dea76f4fdb49695fd81aa669af86"
+API_URL = "https://vuotlink.vip/api"
 
-# Biến toàn cục
-user_files = {}
-user_alias = {}
+bot = Bot(token=BOT_TOKEN)
+media_groups = {}
+processing_tasks = {}
 
-# Hàm tạo alias ngẫu nhiên
-def generate_alias(length=12):
-    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
+async def start(update: Update, context: CallbackContext):
+    if not update.message or update.effective_chat.type != "private":
+        return
+    await update.message.reply_text(
+        "**👋 Chào mừng bạn🙃!😍**\n"
+        "**🔗 Gửi link bất kỳ để rút gọn.**\n"
+        "**📷 Chuyển tiếp bài viết kèm ảnh/video, bot sẽ giữ nguyên caption & rút gọn link trong caption.**\n"
+        "**💬 Mọi thắc mắc, hãy liên hệ admin.**",
+        parse_mode="Markdown"
+    )
 
-# /start
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    args = context.args
-    if args:
-        alias = args[0]
-        url = f"{FIREBASE_URL}/{alias}.json"
-        res = requests.get(url)
-        if res.status_code == 200 and res.json():
-            media_items = res.json()
-            media_group = []
-            for item in media_items:
-                if item["type"] == "photo":
-                    media_group.append(InputMediaPhoto(item["file_id"]))
-                elif item["type"] == "video":
-                    media_group.append(InputMediaVideo(item["file_id"]))
-            if media_group:
-                for i in range(0, len(media_group), 10):
-                    await update.message.reply_media_group(media_group[i:i+10])
-                    await asyncio.sleep(1)
+async def format_text(text: str) -> str:
+    lines = text.splitlines()
+    new_lines = []
+    for line in lines:
+        words = line.split()
+        new_words = []
+        for word in words:
+            if word.startswith("http"):
+                params = {"api": API_KEY, "url": word, "format": "text"}
+                response = requests.get(API_URL, params=params)
+                short_link = response.text.strip() if response.status_code == 200 else word
+                word = f"<s>{short_link}</s>"
             else:
-                await update.message.reply_text("Không có nội dung để hiển thị.")
-        else:
-            await update.message.reply_text("❌ Không tìm thấy dữ liệu với mã này.")
-    else:
-        await update.message.reply_text("📥 Gửi ảnh hoặc video cho mình. Khi xong thì nhắn /done để lưu và lấy link.")
+                word = f"<b>{word}</b>"
+            new_words.append(word)
+        new_lines.append(" ".join(new_words))
 
-# Xử lý media
-async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id not in user_files:
-        user_files[user_id] = []
-        user_alias[user_id] = generate_alias()
+    new_lines.append(
+        '\n<b>Báo lỗi + đóng góp video tại đây</b> @nothinginthissss (có lỗi sẽ đền bù)\n'
+        '<b>Theo dõi thông báo tại đây</b> @sachkhongchuu\n'
+        '<b>CÁCH XEM LINK(lỗi bot không gửi video):</b> @HuongDanVuotLink_SachKhongChu\n\n'
+        '⚠️<b>Kênh xem không cần vượt :</b> <a href="https://t.me/sachkhongchuu/299">ấn vào đây</a>'
+    )
 
-    if update.message.photo:
-        file_id = update.message.photo[-1].file_id
-        entry = {"file_id": file_id, "type": "photo"}
-    elif update.message.video:
-        file_id = update.message.video.file_id
-        entry = {"file_id": file_id, "type": "video"}
-    else:
+    return "\n".join(new_lines)
+
+async def process_media_group(mgid: str, chat_id: int):
+    await asyncio.sleep(random.uniform(3, 5))
+    group = media_groups.pop(mgid, [])
+    if not group:
+        await bot.send_message(chat_id=chat_id, text="⚠️ Bài viết không hợp lệ hoặc thiếu ảnh/video.")
         return
 
-    if entry not in user_files[user_id]:
-        user_files[user_id].append(entry)
+    group.sort(key=lambda m: m.message_id)
+    caption = await format_text(group[0].caption) if group[0].caption else None
+    media = []
 
-# /done
-async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    files = user_files.get(user_id, [])
-    alias = user_alias.get(user_id)
+    for i, msg in enumerate(group):
+        if msg.photo:
+            file_id = msg.photo[-1].file_id
+            media.append(InputMediaPhoto(file_id, caption=caption if i == 0 else None, parse_mode="HTML"))
+        elif msg.video:
+            file_id = msg.video.file_id
+            media.append(InputMediaVideo(file_id, caption=caption if i == 0 else None, parse_mode="HTML"))
 
-    if not files or not alias:
-        await update.message.reply_text("❌ Bạn chưa gửi ảnh hoặc video nào.")
+    if not media:
+        await bot.send_message(chat_id=chat_id, text="⚠️ Bài viết không có ảnh hoặc video hợp lệ.")
         return
 
-    url = f"{FIREBASE_URL}/{alias}.json"
-    response = requests.put(url, json=files)
+    try:
+        await bot.send_media_group(chat_id=chat_id, media=media)
+    except Exception as e:
+        print(f"Lỗi khi gửi media_group: {e}")
+        await bot.send_message(chat_id=chat_id, text="⚠️ Gửi bài viết thất bại. Có thể do file lỗi hoặc Telegram bị giới hạn.")
 
-    if response.status_code == 200:
-        link = f"https://t.me/filebotstorage_bot?start={alias}"
-        await update.message.reply_text(f"✅ Đã lưu thành công!\n🔗 Link truy cập: {link}")
-    else:
-        await update.message.reply_text("❌ Đã có lỗi xảy ra khi lưu dữ liệu.")
+async def shorten_link(update: Update, context: CallbackContext):
+    if not update.message or update.effective_chat.type != "private":
+        return
 
-    del user_files[user_id]
-    del user_alias[user_id]
+    if update.message.media_group_id:
+        mgid = update.message.media_group_id
+        if mgid not in media_groups:
+            media_groups[mgid] = []
+            processing_tasks[mgid] = asyncio.create_task(process_media_group(mgid, update.effective_chat.id))
+        media_groups[mgid].append(update.message)
+        return
 
-# Chạy Telegram bot
-async def telegram_main():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    if update.message.text and update.message.text.startswith("http"):
+        params = {"api": API_KEY, "url": update.message.text.strip(), "format": "text"}
+        response = requests.get(API_URL, params=params)
+        if response.status_code == 200:
+            short_link = response.text.strip()
+            message = (
+                "📢 <b>Bạn có link rút gọn mới</b>\n"
+                f"🔗 <b>Link gốc:</b> <s>{update.message.text}</s>\n"
+                f"🔍 <b>Link rút gọn:</b> {short_link}\n\n"
+                '⚠️<b>Kênh xem không cần vượt :</b> <a href="https://t.me/sachkhongchuu/299">ấn vào đây</a>'
+            )
+            await update.message.reply_text(message, parse_mode="HTML")
+        return
 
+    if update.message.forward_origin:
+        caption = update.message.caption or ""
+        new_caption = await format_text(caption)
+        await update.message.copy(chat_id=update.effective_chat.id, caption=new_caption, parse_mode="HTML")
+
+def main():
+    # 1) Giữ bot luôn "sống" qua Flask
+    keep_alive()
+
+    # 2) Khởi tạo và đăng ký handlers
+    app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("done", done))
-    app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO, handle_media))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, shorten_link))
+    app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.FORWARDED, shorten_link))
 
-    print("Bot đang chạy...")
-    await app.run_polling()
+    print("✅ Bot đang chạy...")
 
-# Main
-if __name__ == '__main__':
-    nest_asyncio.apply()
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(telegram_main())
+    # 3) Bắt đầu polling, không đóng loop khi kết thúc
+    app.run_polling(close_loop=False)
+
+if __name__ == "__main__":
+    main()
