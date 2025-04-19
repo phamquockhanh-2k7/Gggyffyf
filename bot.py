@@ -3,9 +3,10 @@ from telegram import Bot, Update, InputMediaPhoto, InputMediaVideo
 from telegram.ext import Application, MessageHandler, CommandHandler, filters, CallbackContext
 import asyncio
 import nest_asyncio
-import random
 from keep_alive import keep_alive
+import logging
 
+# Cho phép nest_asyncio để tránh xung đột vòng lặp
 nest_asyncio.apply()
 
 BOT_TOKEN = "8064426886:AAFAWxoIKjiyTGG_DxcXFXDUizHZyANldE4"
@@ -20,7 +21,7 @@ async def start(update: Update, context: CallbackContext):
     if not update.message or update.effective_chat.type != "private":
         return
     await update.message.reply_text(
-        "**👋 Chào mừng bạn🙃.😍**\n"
+        "**👋 Chào mừng bạn🙃!😍**\n"
         "**🔗 Gửi link bất kỳ để rút gọn.**\n"
         "**📷 Chuyển tiếp bài viết kèm ảnh/video, bot sẽ giữ nguyên caption & rút gọn link trong caption.**\n"
         "**💬 Mọi thắc mắc, hãy liên hệ admin.**",
@@ -35,16 +36,9 @@ async def format_text(text: str) -> str:
         new_words = []
         for word in words:
             if word.startswith("http"):
-                if len(word) < 10:
-                    short_link = word
-                else:
-                    params = {"api": API_KEY, "url": word, "format": "text"}
-                    try:
-                        response = requests.get(API_URL, params=params)
-                        short_link = response.text.strip() if response.status_code == 200 and response.text.startswith("http") else word
-                    except Exception as e:
-                        print("Lỗi rút gọn trong format_text:", e)
-                        short_link = word
+                params = {"api": API_KEY, "url": word, "format": "text"}
+                response = requests.get(API_URL, params=params)
+                short_link = response.text.strip() if response.status_code == 200 else word
                 word = f"<s>{short_link}</s>"
             else:
                 word = f"<b>{word}</b>"
@@ -102,32 +96,17 @@ async def shorten_link(update: Update, context: CallbackContext):
         return
 
     if update.message.text and update.message.text.startswith("http"):
-        url = update.message.text.strip()
-        if len(url) < 10:
-            await update.message.reply_text("⚠️ Link không hợp lệ để rút gọn.")
-            return
-
-        params = {"api": API_KEY, "url": url, "format": "text"}
-        try:
-            response = requests.get(API_URL, params=params)
-            print("API Response:", response.status_code, response.text)
-
-            if response.status_code == 200 and response.text.startswith("http"):
-                short_link = response.text.strip()
-            else:
-                short_link = url
-
+        params = {"api": API_KEY, "url": update.message.text.strip(), "format": "text"}
+        response = requests.get(API_URL, params=params)
+        if response.status_code == 200:
+            short_link = response.text.strip()
             message = (
                 "📢 <b>Bạn có link rút gọn mới</b>\n"
-                f"🔗 <b>Link gốc:</b> <s>{url}</s>\n"
+                f"🔗 <b>Link gốc:</b> <s>{update.message.text}</s>\n"
                 f"🔍 <b>Link rút gọn:</b> {short_link}\n\n"
                 '⚠️<b>Kênh xem không cần vượt :</b> <a href="https://t.me/sachkhongchuu/299">ấn vào đây</a>'
             )
             await update.message.reply_text(message, parse_mode="HTML")
-
-        except Exception as e:
-            print("Lỗi khi gọi API vuotlink:", e)
-            await update.message.reply_text("❌ Lỗi khi kết nối API rút gọn. Hãy thử lại sau.")
         return
 
     if update.message.forward_origin:
@@ -136,13 +115,25 @@ async def shorten_link(update: Update, context: CallbackContext):
         await update.message.copy(chat_id=update.effective_chat.id, caption=new_caption, parse_mode="HTML")
 
 def main():
+    # Cấu hình webhook
+    WEBHOOK_URL = f"https://bewildered-wenda-happyboy2k777-413cd6df.koyeb.app/webhook/{BOT_TOKEN}"
+
+    # 1) Giữ bot luôn "sống" qua Flask
     keep_alive()
+
+    # 2) Khởi tạo và đăng ký handlers
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, shorten_link))
     app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.FORWARDED, shorten_link))
+
+    # Cài đặt webhook cho bot
+    bot.set_webhook(WEBHOOK_URL)
+
     print("✅ Bot đang chạy...")
-    app.run_polling(close_loop=False)
+
+    # 3) Đừng dùng app.run_polling() nữa, vì bot đang chạy với webhook
+    app.run_webhook(listen="0.0.0.0", port=8000, url_path=f"webhook/{BOT_TOKEN}")
 
 if __name__ == "__main__":
     main()
