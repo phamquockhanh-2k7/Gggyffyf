@@ -9,7 +9,7 @@ from keep_alive import keep_alive
 # Cho phép nest_asyncio để tránh xung đột vòng lặp
 nest_asyncio.apply()
 
-BOT_TOKEN = "8064426886:AAHNez92dmsVQBB6yQp65k_pjPwiJT-SBEI"
+BOT_TOKEN = "8064426886:AAE5Zr980N-8LhGgnXGqUXwqlPthvdKA9H0"
 API_KEY = "5d2e33c19847dea76f4fdb49695fd81aa669af86"
 API_URL = "https://vuotlink.vip/api"
 
