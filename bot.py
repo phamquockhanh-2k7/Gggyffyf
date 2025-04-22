@@ -49,7 +49,7 @@ async def format_text(text: str) -> str:
         '\n<b>Báo lỗi + đóng góp video tại đây</b> @nothinginthissss (có lỗi sẽ đền bù)\n'
         '<b>Theo dõi thông báo tại đây</b> @linkdinhcaovn\n'
         '<b>CÁCH XEM LINK(lỗi bot không gửi video):</b> @HuongDanVuotLink_SachKhongChu\n\n'
-        '⚠️<b>Kênh xem không cần vượt :</b> <a href="https://t.me/linkdinhcaovn/4">ấn vào đây</a>'
+        '⚠️<b>Kênh xem không cần vượt :</b> <a href="https://t.me/linkdinhcaovn/4">ấn vào đây!</a>'
     )
 
     return "\n".join(new_lines)
