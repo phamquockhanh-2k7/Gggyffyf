@@ -49,7 +49,7 @@ async def format_text(text: str) -> str:
         '\n<b>Báo lỗi + đóng góp video tại đây</b> @nothinginthissss (có lỗi sẽ đền bù)\n'
         '<b>Theo dõi thông báo tại đây</b> @linkdinhcaovn\n'
         '<b>CÁCH XEM LINK(lỗi bot không gửi video):</b> @HuongDanVuotLink_SachKhongChu\n\n'
-        '⚠️<b>Kênh xem không cần vượt :</b> <a href="https://t.me/linkdinhcaovn/4">ấn vào đây!</a>'
+        '⚠️<b>Kênh xem không cần vượt :</b> <a href="https://t.me/linkdinhcaovn/4">ấn vào đây</a>'
     )
 
     return "\n".join(new_lines)
@@ -78,9 +78,12 @@ async def process_media_group(mgid: str, chat_id: int):
         return
 
     try:
+        total = len(media)
+        status_message = await bot.send_message(chat_id=chat_id, text=f"📤 Đang gửi bài viết: 0/{total} ảnh/video...")
         await bot.send_media_group(chat_id=chat_id, media=media)
+        await status_message.edit_text(f"✅ Đã gửi xong {total}/{total} ảnh/video!")
     except Exception as e:
-        print(f"Lỗi khi gửi media_group: {e}")
+        print(f"❌ Lỗi khi gửi media_group: {e}")
         await bot.send_message(chat_id=chat_id, text="⚠️ Gửi bài viết thất bại. Có thể do file lỗi hoặc Telegram bị giới hạn.")
 
 async def shorten_link(update: Update, context: CallbackContext):
@@ -95,20 +98,41 @@ async def shorten_link(update: Update, context: CallbackContext):
         media_groups[mgid].append(update.message)
         return
 
-    if update.message.text and update.message.text.startswith("http"):
-        params = {"api": API_KEY, "url": update.message.text.strip(), "format": "text"}
-        response = requests.get(API_URL, params=params)
-        if response.status_code == 200:
-            short_link = response.text.strip()
-            message = (
-                "📢 <b>Bạn có link rút gọn mới</b>\n"
-                f"🔗 <b>Link gốc:</b> <s>{update.message.text}</s>\n"
-                f"🔍 <b>Link rút gọn:</b> {short_link}\n\n"
-                '⚠️<b>Kênh xem không cần vượt :</b> <a href="https://t.me/sachkhongchuu/299">ấn vào đây</a>'
-            )
-            await update.message.reply_text(message, parse_mode="HTML")
+    # Nếu chỉ có 1 ảnh hoặc 1 video riêng lẻ
+    if update.message.photo or update.message.video:
+        caption = update.message.caption or ""
+        if caption:
+            new_caption = await format_text(caption)
+            try:
+                if update.message.photo:
+                    await bot.send_photo(chat_id=update.effective_chat.id, photo=update.message.photo[-1].file_id, caption=new_caption, parse_mode="HTML")
+                else:
+                    await bot.send_video(chat_id=update.effective_chat.id, video=update.message.video.file_id, caption=new_caption, parse_mode="HTML")
+            except Exception as e:
+                print(f"❌ Lỗi gửi 1 ảnh/video: {e}")
         return
 
+    # Nếu là text chứa link
+    if update.message.text:
+        if "http" in update.message.text:
+            params = {"api": API_KEY, "url": update.message.text.strip(), "format": "text"}
+            response = requests.get(API_URL, params=params)
+            if response.status_code == 200:
+                short_link = response.text.strip()
+                message = (
+                    "📢 <b>Bạn có link rút gọn mới</b>\n"
+                    f"🔗 <b>Link gốc:</b> <s>{update.message.text}</s>\n"
+                    f"🔍 <b>Link rút gọn:</b> {short_link}\n\n"
+                    '⚠️<b>Kênh xem không cần vượt :</b> <a href="https://t.me/sachkhongchuu/299">ấn vào đây</a>'
+                )
+                await update.message.reply_text(message, parse_mode="HTML")
+            return
+        else:
+            # Nếu là văn bản không chứa link thì định dạng đậm
+            formatted_text = await format_text(update.message.text)
+            await update.message.reply_text(formatted_text, parse_mode="HTML")
+
+    # Nếu là bài viết chuyển tiếp
     if update.message.forward_origin:
         caption = update.message.caption or ""
         new_caption = await format_text(caption)
@@ -121,8 +145,7 @@ def main():
     # 2) Khởi tạo và đăng ký handlers
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, shorten_link))
-    app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.FORWARDED, shorten_link))
+    app.add_handler(MessageHandler(filters.ALL, shorten_link))
 
     print("✅ Bot đang chạy...")
 
