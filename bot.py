@@ -1,15 +1,15 @@
-import requests
 from telegram import Bot, Update, InputMediaPhoto, InputMediaVideo
-from telegram.ext import Application, MessageHandler, CommandHandler, filters, CallbackContext, ChannelPostHandler
-import asyncio
-import nest_asyncio
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
+import requests
 import random
+import nest_asyncio
 from keep_alive import keep_alive
 
 # Cho phép nest_asyncio để tránh xung đột vòng lặp
 nest_asyncio.apply()
 
-BOT_TOKEN = "8064426886:AAE5Zr980N-8LhGgnXGqUXwqlPthvdKA9H0"
+# Thông tin cấu hình bot và API
+BOT_TOKEN = "8064426886:AAFAWxoIKjiyTGG_DxcXFXDUizHZyANldE4"
 API_KEY = "5d2e33c19847dea76f4fdb49695fd81aa669af86"
 API_URL = "https://vuotlink.vip/api"
 
@@ -17,12 +17,11 @@ bot = Bot(token=BOT_TOKEN)
 media_groups = {}
 processing_tasks = {}
 
-# Danh sách ID các nhóm/kênh cần chuyển tiếp
-TARGET_CHATS = [
-    -4683074506,  # Kênh, nhóm cần chuyển tiếp
-    -1002574479479  # Kênh, nhóm cần chuyển tiếp
-]
+# Cấu hình ID kênh chính và các kênh nhóm cần chuyển tiếp
+main_channel_id = -1002631634540
+target_channels_and_groups = [-4683074506, -1002574479479]  # Các ID kênh, nhóm cần chuyển tiếp
 
+# Hàm xử lý tin nhắn /start
 async def start(update: Update, context: CallbackContext):
     if not update.message or update.effective_chat.type != "private":
         return
@@ -34,6 +33,7 @@ async def start(update: Update, context: CallbackContext):
         parse_mode="Markdown"
     )
 
+# Hàm xử lý rút gọn link
 async def format_text(text: str) -> str:
     lines = text.splitlines()
     new_lines = []
@@ -60,35 +60,25 @@ async def format_text(text: str) -> str:
 
     return "\n".join(new_lines)
 
-async def process_media_group(mgid: str, chat_id: int):
-    await asyncio.sleep(random.uniform(3, 5))
-    group = media_groups.pop(mgid, [])
-    if not group:
-        await bot.send_message(chat_id=chat_id, text="⚠️ Bài viết không hợp lệ hoặc thiếu ảnh/video.")
-        return
+# Hàm chuyển tiếp bài viết
+async def forward_post_to_target_channels(update: Update):
+    if update.channel_post:
+        # Chuyển tiếp bài viết từ kênh chính đến các kênh nhóm yêu cầu
+        for target_id in target_channels_and_groups:
+            try:
+                # Giữ nguyên caption và các media
+                caption = update.channel_post.caption or ""
+                caption = await format_text(caption)
+                if update.channel_post.photo:
+                    await bot.send_photo(target_id, update.channel_post.photo[-1].file_id, caption=caption, parse_mode="HTML")
+                elif update.channel_post.video:
+                    await bot.send_video(target_id, update.channel_post.video.file_id, caption=caption, parse_mode="HTML")
+                else:
+                    await bot.send_message(target_id, caption, parse_mode="HTML")
+            except Exception as e:
+                print(f"Error forwarding to {target_id}: {e}")
 
-    group.sort(key=lambda m: m.message_id)
-    caption = await format_text(group[0].caption) if group[0].caption else None
-    media = []
-
-    for i, msg in enumerate(group):
-        if msg.photo:
-            file_id = msg.photo[-1].file_id
-            media.append(InputMediaPhoto(file_id, caption=caption if i == 0 else None, parse_mode="HTML"))
-        elif msg.video:
-            file_id = msg.video.file_id
-            media.append(InputMediaVideo(file_id, caption=caption if i == 0 else None, parse_mode="HTML"))
-
-    if not media:
-        await bot.send_message(chat_id=chat_id, text="⚠️ Bài viết không có ảnh hoặc video hợp lệ.")
-        return
-
-    try:
-        await bot.send_media_group(chat_id=chat_id, media=media)
-    except Exception as e:
-        print(f"Lỗi khi gửi media_group: {e}")
-        await bot.send_message(chat_id=chat_id, text="⚠️ Gửi bài viết thất bại. Có thể do file lỗi hoặc Telegram bị giới hạn.")
-
+# Hàm xử lý các bài viết rút gọn hoặc có media group
 async def shorten_link(update: Update, context: CallbackContext):
     if not update.message or update.effective_chat.type != "private":
         return
@@ -120,14 +110,7 @@ async def shorten_link(update: Update, context: CallbackContext):
         new_caption = await format_text(caption)
         await update.message.copy(chat_id=update.effective_chat.id, caption=new_caption, parse_mode="HTML")
 
-async def forward_channel_post(update: Update, context: CallbackContext):
-    if update.channel_post and update.effective_chat.id == -1002631634540:  # Kênh chính
-        for chat_id in TARGET_CHATS:
-            try:
-                await update.channel_post.forward(chat_id)
-            except Exception as e:
-                print(f"Lỗi khi chuyển tiếp đến {chat_id}: {e}")
-
+# Hàm chính để khởi tạo và chạy bot
 def main():
     # 1) Giữ bot luôn "sống" qua Flask
     keep_alive()
@@ -137,7 +120,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, shorten_link))
     app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.FORWARDED, shorten_link))
-    app.add_handler(ChannelPostHandler(forward_channel_post))  # Thêm handler chuyển tiếp bài viết
+    app.add_handler(MessageHandler(filters.ChannelPost, forward_post_to_target_channels))
 
     print("✅ Bot đang chạy...")
 
