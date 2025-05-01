@@ -1,5 +1,5 @@
 import requests
-from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, InputMediaVideo
 from telegram.ext import Application, MessageHandler, CommandHandler, CallbackContext, filters, CallbackQueryHandler
 import asyncio
 import nest_asyncio
