@@ -1,12 +1,17 @@
 import requests
-from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, InputMediaVideo
-from telegram.ext import Application, MessageHandler, CommandHandler, CallbackContext, filters, CallbackQueryHandler
+from telegram import (
+    Bot, Update, InputMediaPhoto, InputMediaVideo,
+    InlineKeyboardButton, InlineKeyboardMarkup
+)
+from telegram.ext import (
+    Application, MessageHandler, CommandHandler, CallbackQueryHandler,
+    ContextTypes, filters
+)
 import asyncio
 import nest_asyncio
 import random
 from keep_alive import keep_alive
 
-# Cho phép nest_asyncio để tránh xung đột vòng lặp
 nest_asyncio.apply()
 
 BOT_TOKEN = "8064426886:AAE5Zr980N-8LhGgnXGqUXwqlPthvdKA9H0"
@@ -16,55 +21,48 @@ API_URL = "https://vuotlink.vip/api"
 bot = Bot(token=BOT_TOKEN)
 media_groups = {}
 processing_tasks = {}
-user_passwords = {}  # Lưu mật khẩu người dùng
-user_modes = {}  # Lưu chế độ người dùng (shorten hoặc free)
+user_modes = {}  # Lưu chế độ người dùng: user_id → "shorten" hoặc "free"
 
-# Mật khẩu mặc định
-DEFAULT_PASSWORD = "2703"
-
-async def start(update: Update, context: CallbackContext):
-    if not update.message or update.effective_chat.type != "private":
+# Gửi lời chào khi /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type != "private":
         return
     await update.message.reply_text(
-        "**👋 Chào mừng banj!😍**\n"
+        "**👋 Chào mừng bạn!😍**\n"
         "**🔗 Gửi link bất kỳ để rút gọn.**\n"
         "**📷 Chuyển tiếp bài viết kèm ảnh/video, bot sẽ giữ nguyên caption & rút gọn link trong caption.**\n"
-        "**💬 Mọi thắc mắc, hãy liên hệ admin.**",
+        "**💬 Gõ /setmode để chọn chế độ hoạt động.**",
         parse_mode="Markdown"
     )
 
-async def handle_message(update: Update, context: CallbackContext):
-    user_id = update.effective_user.id
+# Format text (rút gọn link + định dạng)
+async def format_text(text: str) -> str:
+    lines = text.splitlines()
+    new_lines = []
+    for line in lines:
+        words = line.split()
+        new_words = []
+        for word in words:
+            if word.startswith("http"):
+                params = {"api": API_KEY, "url": word, "format": "text"}
+                response = requests.get(API_URL, params=params)
+                short_link = response.text.strip() if response.status_code == 200 else word
+                word = f"<s>{short_link}</s>"
+            else:
+                word = f"<b>{word}</b>"
+            new_words.append(word)
+        new_lines.append(" ".join(new_words))
 
-    # Kiểm tra xem người dùng đã nhập mật khẩu chưa
-    if user_id not in user_passwords:
-        await update.message.reply_text("Vui lòng nhập mật khẩu để tiếp tục sử dụng bot.")
-        return
+    new_lines.append(
+        '\n<b>Báo lỗi + đóng góp video tại đây</b> @nothinginthissss\n'
+        '<b>Theo dõi thông báo tại đây</b> @linkdinhcaovn\n'
+        '<b>CÁCH XEM LINK (nếu lỗi bot không gửi video):</b> @HuongDanVuotLink_SachKhongChu\n\n'
+        '⚠️<b>Kênh xem không cần vượt :</b> <a href="https://t.me/linkdinhcaovn/4">ấn vào đây!</a>'
+    )
 
-    entered_password = update.message.text.strip()
-    
-    # Kiểm tra mật khẩu
-    if entered_password == DEFAULT_PASSWORD:
-        user_passwords[user_id] = DEFAULT_PASSWORD
-        await update.message.reply_text("Mật khẩu chính xác! Bot đã được kích hoạt.")
-        
-        # Sau khi mật khẩu đúng, bot yêu cầu chọn chế độ
-        if user_id not in user_modes:
-            keyboard = [
-                [
-                    InlineKeyboardButton("Rút gọn link", callback_data='shorten'),
-                    InlineKeyboardButton("Link Free", callback_data='free')
-                ]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text(
-                "Chọn chế độ sử dụng bot:",
-                reply_markup=reply_markup
-            )
-        return
-    else:
-        await update.message.reply_text("Mật khẩu không đúng. Vui lòng thử lại.")
-        
+    return "\n".join(new_lines)
+
+# Xử lý nhóm media (ảnh/video)
 async def process_media_group(mgid: str, chat_id: int, mode: str):
     await asyncio.sleep(random.uniform(3, 5))
     group = media_groups.pop(mgid, [])
@@ -73,9 +71,11 @@ async def process_media_group(mgid: str, chat_id: int, mode: str):
         return
 
     group.sort(key=lambda m: m.message_id)
-    caption = await format_text(group[0].caption, mode) if group[0].caption else None
-    media = []
+    caption = group[0].caption if group[0].caption else ""
+    if mode == "shorten" and caption:
+        caption = await format_text(caption)
 
+    media = []
     for i, msg in enumerate(group):
         if msg.photo:
             file_id = msg.photo[-1].file_id
@@ -85,58 +85,24 @@ async def process_media_group(mgid: str, chat_id: int, mode: str):
             media.append(InputMediaVideo(file_id, caption=caption if i == 0 else None, parse_mode="HTML"))
 
     if not media:
-        await bot.send_message(chat_id=chat_id, text="⚠️ Bài viết không có ảnh hoặc video hợp lệ.")
+        await bot.send_message(chat_id=chat_id, text="⚠️ Không có ảnh hoặc video hợp lệ.")
         return
 
     try:
         await bot.send_media_group(chat_id=chat_id, media=media)
     except Exception as e:
         print(f"Lỗi khi gửi media_group: {e}")
-        await bot.send_message(chat_id=chat_id, text="⚠️ Gửi bài viết thất bại. Có thể do file lỗi hoặc Telegram bị giới hạn.")
+        await bot.send_message(chat_id=chat_id, text="⚠️ Gửi bài viết thất bại. Có thể file lỗi hoặc Telegram giới hạn.")
 
-async def format_text(text: str, mode: str) -> str:
-    lines = text.splitlines()
-    new_lines = []
-    for line in lines:
-        words = line.split()
-        new_words = []
-        for word in words:
-            if word.startswith("http"):
-                if mode == "shorten":
-                    params = {"api": API_KEY, "url": word, "format": "text"}
-                    response = requests.get(API_URL, params=params)
-                    short_link = response.text.strip() if response.status_code == 200 else word
-                    word = f"<s>{short_link}</s>"
-                else:
-                    word = f"<a href='{word}'>{word}</a>"
-            new_words.append(word)
-        new_lines.append(" ".join(new_words))
+# Xử lý tin nhắn văn bản, ảnh, video, chuyển tiếp
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type != "private" or not update.message:
+        return
 
-    # Thêm nội dung cho chế độ shorten
-    if mode == "shorten":
-        additional_text = (
-            "\n\n<b>Báo lỗi + đóng góp video tại đây</b> @nothinginthissss (có lỗi sẽ đền bù)\n"
-            "<b>Theo dõi thông báo tại đây</b> @sachkhongchuu\n"
-            "<b>CÁCH XEM LINK (lỗi bot không gửi video):</b> @HuongDanVuotLink_SachKhongChu\n\n"
-            '⚠️<b>Kênh xem không cần vượt :</b> <a href="https://t.me/sachkhongchuu/299">ấn vào đây</a>'
-        )
-        new_lines.append(additional_text)
-
-    return "\n".join(new_lines)
-
-async def shorten_link(update: Update, context: CallbackContext):
     user_id = update.effective_user.id
+    mode = user_modes.get(user_id, "shorten")  # Mặc định là shorten
 
-    if user_id not in user_passwords:
-        await update.message.reply_text("Vui lòng nhập mật khẩu để tiếp tục sử dụng bot.")
-        return
-
-    if user_id not in user_modes:
-        await update.message.reply_text("Vui lòng chọn chế độ sử dụng bot trước.")
-        return
-
-    mode = user_modes[user_id]
-
+    # Media Group
     if update.message.media_group_id:
         mgid = update.message.media_group_id
         if mgid not in media_groups:
@@ -145,7 +111,8 @@ async def shorten_link(update: Update, context: CallbackContext):
         media_groups[mgid].append(update.message)
         return
 
-    if update.message.text and update.message.text.startswith("http"):
+    # Link rút gọn
+    if update.message.text and update.message.text.startswith("http") and mode == "shorten":
         params = {"api": API_KEY, "url": update.message.text.strip(), "format": "text"}
         response = requests.get(API_URL, params=params)
         if response.status_code == 200:
@@ -159,49 +126,47 @@ async def shorten_link(update: Update, context: CallbackContext):
             await update.message.reply_text(message, parse_mode="HTML")
         return
 
-    if update.message.forward_origin:
+    # Bài viết chuyển tiếp
+    if (update.message.forward_date or update.message.forward_from or update.message.forward_sender_name) or update.message.caption:
         caption = update.message.caption or ""
-        new_caption = await format_text(caption, mode)
-        await update.message.copy(chat_id=update.effective_chat.id, caption=new_caption, parse_mode="HTML")
+        new_caption = await format_text(caption) if mode == "shorten" else caption
+        await update.message.copy(chat_id=update.effective_chat.id, caption=new_caption, parse_mode="HTML" if mode == "shorten" else None)
 
-async def set_mode(update: Update, context: CallbackContext):
-    user_id = update.effective_user.id
-
-    if user_id not in user_passwords:
-        await update.message.reply_text("Vui lòng nhập mật khẩu để tiếp tục sử dụng bot.")
+# /setmode → gửi nút chọn
+async def set_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type != "private":
         return
-
-    keyboard = [
-        [
-            InlineKeyboardButton("Rút gọn link", callback_data='shorten'),
-            InlineKeyboardButton("Link Free", callback_data='free')
-        ]
+    buttons = [
+        [InlineKeyboardButton("🔗 Rút gọn link", callback_data="mode_shorten")],
+        [InlineKeyboardButton("🆓 Link Free", callback_data="mode_free")]
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(
-        "Chọn chế độ sử dụng bot:",
-        reply_markup=reply_markup
-    )
+    await update.message.reply_text("🔧 Chọn chế độ hoạt động của bot:", reply_markup=InlineKeyboardMarkup(buttons))
 
-async def button(update: Update, context: CallbackContext):
+# Xử lý callback từ nút
+async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    user_id = query.from_user.id
-    mode = query.data
-    user_modes[user_id] = mode
     await query.answer()
-    await query.edit_message_text(text=f"Chế độ đã được thay đổi thành: {mode}")
 
+    user_id = query.from_user.id
+    if query.data == "mode_shorten":
+        user_modes[user_id] = "shorten"
+        await query.edit_message_text("✅ Bot đã chuyển sang chế độ: Rút gọn link")
+    elif query.data == "mode_free":
+        user_modes[user_id] = "free"
+        await query.edit_message_text("🆓 Bot đã chuyển sang chế độ: Link Free (không rút gọn)")
+
+# Main
 def main():
     keep_alive()
 
-    # 1) Khởi tạo và đăng ký handlers
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("setmode", set_mode))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, shorten_link))
-    app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO, shorten_link))
-    app.add_handler(CallbackQueryHandler(button))
+    app.add_handler(CallbackQueryHandler(handle_callback))
+    app.add_handler(MessageHandler(filters.TEXT | filters.PHOTO | filters.VIDEO | filters.FORWARDED, handle_message))
 
-    print("✅ Bot đang chạy...")
+    print("✅ Bot đang chạy trên Koyeb...")
+    app.run_polling(close_loop=False)
 
-    # 3) Bắt
+if __name__ == "__main__":
+    main()
