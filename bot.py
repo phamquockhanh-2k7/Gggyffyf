@@ -33,18 +33,22 @@ async def start(update: Update, context: CallbackContext):
         parse_mode="Markdown"
     )
 
-async def handle_password(update: Update, context: CallbackContext):
+async def handle_message(update: Update, context: CallbackContext):
     user_id = update.effective_user.id
-    message_text = update.message.text.strip()
 
-    if user_id in user_passwords:
-        return  # Đã xác thực, bỏ qua
+    # Kiểm tra xem người dùng đã nhập mật khẩu chưa
+    if user_id not in user_passwords:
+        await update.message.reply_text("Vui lòng nhập mật khẩu để tiếp tục sử dụng bot.")
+        return
 
-    if message_text == DEFAULT_PASSWORD:
+    entered_password = update.message.text.strip()
+    
+    # Kiểm tra mật khẩu
+    if entered_password == DEFAULT_PASSWORD:
         user_passwords[user_id] = DEFAULT_PASSWORD
-        await update.message.reply_text("✅ Mật khẩu chính xác! Bot đã được kích hoạt.")
-
-        # Sau khi nhập đúng mật khẩu, hỏi chế độ nếu chưa có
+        await update.message.reply_text("Mật khẩu chính xác! Bot đã được kích hoạt.")
+        
+        # Sau khi mật khẩu đúng, bot yêu cầu chọn chế độ
         if user_id not in user_modes:
             keyboard = [
                 [
@@ -53,10 +57,14 @@ async def handle_password(update: Update, context: CallbackContext):
                 ]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text("🎯 Chọn chế độ sử dụng bot:", reply_markup=reply_markup)
+            await update.message.reply_text(
+                "Chọn chế độ sử dụng bot:",
+                reply_markup=reply_markup
+            )
+        return
     else:
-        await update.message.reply_text("❌ Mật khẩu không đúng. Vui lòng thử lại.")
-
+        await update.message.reply_text("Mật khẩu không đúng. Vui lòng thử lại.")
+        
 async def process_media_group(mgid: str, chat_id: int, mode: str):
     await asyncio.sleep(random.uniform(3, 5))
     group = media_groups.pop(mgid, [])
@@ -104,17 +112,27 @@ async def format_text(text: str, mode: str) -> str:
             new_words.append(word)
         new_lines.append(" ".join(new_words))
 
+    # Thêm nội dung cho chế độ shorten
+    if mode == "shorten":
+        additional_text = (
+            "\n\n<b>Báo lỗi + đóng góp video tại đây</b> @nothinginthissss (có lỗi sẽ đền bù)\n"
+            "<b>Theo dõi thông báo tại đây</b> @sachkhongchuu\n"
+            "<b>CÁCH XEM LINK (lỗi bot không gửi video):</b> @HuongDanVuotLink_SachKhongChu\n\n"
+            '⚠️<b>Kênh xem không cần vượt :</b> <a href="https://t.me/sachkhongchuu/299">ấn vào đây</a>'
+        )
+        new_lines.append(additional_text)
+
     return "\n".join(new_lines)
 
 async def shorten_link(update: Update, context: CallbackContext):
     user_id = update.effective_user.id
 
     if user_id not in user_passwords:
-        await update.message.reply_text("🔒 Vui lòng nhập mật khẩu để tiếp tục sử dụng bot.")
+        await update.message.reply_text("Vui lòng nhập mật khẩu để tiếp tục sử dụng bot.")
         return
 
     if user_id not in user_modes:
-        await update.message.reply_text("⚙️ Vui lòng chọn chế độ sử dụng bot trước.")
+        await update.message.reply_text("Vui lòng chọn chế độ sử dụng bot trước.")
         return
 
     mode = user_modes[user_id]
@@ -150,7 +168,7 @@ async def set_mode(update: Update, context: CallbackContext):
     user_id = update.effective_user.id
 
     if user_id not in user_passwords:
-        await update.message.reply_text("🔒 Vui lòng nhập mật khẩu để tiếp tục sử dụng bot.")
+        await update.message.reply_text("Vui lòng nhập mật khẩu để tiếp tục sử dụng bot.")
         return
 
     keyboard = [
@@ -160,7 +178,10 @@ async def set_mode(update: Update, context: CallbackContext):
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("🎯 Chọn chế độ sử dụng bot:", reply_markup=reply_markup)
+    await update.message.reply_text(
+        "Chọn chế độ sử dụng bot:",
+        reply_markup=reply_markup
+    )
 
 async def button(update: Update, context: CallbackContext):
     query = update.callback_query
@@ -168,29 +189,19 @@ async def button(update: Update, context: CallbackContext):
     mode = query.data
     user_modes[user_id] = mode
     await query.answer()
-    await query.edit_message_text(text=f"✅ Chế độ đã được thay đổi thành: {mode}")
+    await query.edit_message_text(text=f"Chế độ đã được thay đổi thành: {mode}")
 
 def main():
     keep_alive()
 
+    # 1) Khởi tạo và đăng ký handlers
     app = Application.builder().token(BOT_TOKEN).build()
-
-    # Đăng ký các handler theo đúng thứ tự
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("setmode", set_mode))
-
-    # 1) Xử lý nhập mật khẩu trước
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_password))
-
-    # 2) Xử lý tin nhắn sau khi đã xác thực
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, shorten_link))
     app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO, shorten_link))
-
-    # 3) Nút callback chọn chế độ
     app.add_handler(CallbackQueryHandler(button))
 
     print("✅ Bot đang chạy...")
-    app.run_polling(close_loop=False, allowed_updates=Update.ALL_TYPES)
 
-if __name__ == "__main__":
-    main()
+    # 3) Bắt
