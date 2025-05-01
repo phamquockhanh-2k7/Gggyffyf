@@ -127,7 +127,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Bài viết chuyển tiếp
-    if update.message.forward_origin or update.message.caption:
+    if (update.message.forward_date or update.message.forward_from or update.message.forward_sender_name) or update.message.caption:
         caption = update.message.caption or ""
         new_caption = await format_text(caption) if mode == "shorten" else caption
         await update.message.copy(chat_id=update.effective_chat.id, caption=new_caption, parse_mode="HTML" if mode == "shorten" else None)
