@@ -9,7 +9,6 @@ from telegram.ext import (
 )
 import asyncio
 import nest_asyncio
-import random
 from keep_alive import keep_alive
 
 nest_asyncio.apply()
@@ -17,25 +16,16 @@ nest_asyncio.apply()
 BOT_TOKEN = "8064426886:AAE5Zr980N-8LhGgnXGqUXwqlPthvdKA9H0"
 API_KEY = "5d2e33c19847dea76f4fdb49695fd81aa669af86"
 API_URL = "https://vuotlink.vip/api"
+PASSWORD = "2703"
 
 bot = Bot(token=BOT_TOKEN)
 media_groups = {}
 processing_tasks = {}
-user_modes = {}  # Lưu chế độ người dùng: user_id → "shorten" hoặc "free"
+user_modes = {}
+authenticated_users = set()
+awaiting_password = {}  # user_id → chế độ đang chọn
 
-# Gửi lời chào khi /start
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_chat.type != "private":
-        return
-    await update.message.reply_text(
-        "**👋 Chào mừng bạn!😍**\n"
-        "**🔗 Gửi link bất kỳ để rút gọn.**\n"
-        "**📷 Chuyển tiếp bài viết kèm ảnh/video, bot sẽ giữ nguyên caption & rút gọn link trong caption.**\n"
-        "**💬 Gõ /setmode để chọn chế độ hoạt động.**",
-        parse_mode="Markdown"
-    )
-
-# Format text (rút gọn link + định dạng)
+# Format caption
 async def format_text(text: str) -> str:
     lines = text.splitlines()
     new_lines = []
@@ -62,9 +52,8 @@ async def format_text(text: str) -> str:
 
     return "\n".join(new_lines)
 
-# Xử lý nhóm media (ảnh/video)
+# Xử lý nhóm media
 async def process_media_group(mgid: str, chat_id: int, mode: str):
-    await asyncio.sleep(random.uniform(3, 5))
     group = media_groups.pop(mgid, [])
     if not group:
         await bot.send_message(chat_id=chat_id, text="⚠️ Bài viết không hợp lệ hoặc thiếu ảnh/video.")
@@ -94,15 +83,31 @@ async def process_media_group(mgid: str, chat_id: int, mode: str):
         print(f"Lỗi khi gửi media_group: {e}")
         await bot.send_message(chat_id=chat_id, text="⚠️ Gửi bài viết thất bại. Có thể file lỗi hoặc Telegram giới hạn.")
 
-# Xử lý tin nhắn văn bản, ảnh, video, chuyển tiếp
+# Tin nhắn văn bản/ảnh/video
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != "private" or not update.message:
         return
 
     user_id = update.effective_user.id
-    mode = user_modes.get(user_id, "shorten")  # Mặc định là shorten
 
-    # Media Group
+    # Nếu đang chờ mật khẩu
+    if user_id in awaiting_password:
+        if update.message.text.strip() == PASSWORD:
+            user_modes[user_id] = awaiting_password[user_id]
+            authenticated_users.add(user_id)
+            del awaiting_password[user_id]
+            await update.message.reply_text("✅ Mật khẩu đúng. Chế độ đã được kích hoạt.")
+        else:
+            await update.message.reply_text("❌ Sai mật khẩu. Vui lòng thử lại.")
+        return
+
+    # Nếu chưa xác thực mật khẩu → từ chối
+    if user_id not in authenticated_users:
+        await update.message.reply_text("🔐 Bạn chưa xác thực. Gõ /setmode để bắt đầu.")
+        return
+
+    mode = user_modes.get(user_id, "shorten")
+
     if update.message.media_group_id:
         mgid = update.message.media_group_id
         if mgid not in media_groups:
@@ -111,7 +116,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         media_groups[mgid].append(update.message)
         return
 
-    # Link rút gọn
     if update.message.text and update.message.text.startswith("http") and mode == "shorten":
         params = {"api": API_KEY, "url": update.message.text.strip(), "format": "text"}
         response = requests.get(API_URL, params=params)
@@ -126,13 +130,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(message, parse_mode="HTML")
         return
 
-    # Bài viết chuyển tiếp
     if (update.message.forward_date or update.message.forward_from or update.message.forward_sender_name) or update.message.caption:
         caption = update.message.caption or ""
         new_caption = await format_text(caption) if mode == "shorten" else caption
         await update.message.copy(chat_id=update.effective_chat.id, caption=new_caption, parse_mode="HTML" if mode == "shorten" else None)
 
-# /setmode → gửi nút chọn
+# /setmode → chọn chế độ
 async def set_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != "private":
         return
@@ -140,31 +143,33 @@ async def set_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🔗 Rút gọn link", callback_data="mode_shorten")],
         [InlineKeyboardButton("🆓 Link Free", callback_data="mode_free")]
     ]
-    await update.message.reply_text("🔧 Chọn chế độ hoạt động của bot:", reply_markup=InlineKeyboardMarkup(buttons))
+    await update.message.reply_text("🔐 Chọn chế độ. Bạn sẽ cần nhập mật khẩu:", reply_markup=InlineKeyboardMarkup(buttons))
 
-# Xử lý callback từ nút
+# Nút chọn chế độ
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     user_id = query.from_user.id
+
     if query.data == "mode_shorten":
-        user_modes[user_id] = "shorten"
-        await query.edit_message_text("✅ Bot đã chuyển sang chế độ: Rút gọn link")
+        awaiting_password[user_id] = "shorten"
     elif query.data == "mode_free":
-        user_modes[user_id] = "free"
-        await query.edit_message_text("🆓 Bot đã chuyển sang chế độ: Link Free (không rút gọn)")
+        awaiting_password[user_id] = "free"
+
+    await query.edit_message_text("🛡 Nhập mật khẩu để xác thực:")
+
+# Không phản hồi lệnh /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return  # Không gửi gì cả
 
 # Main
 def main():
     keep_alive()
-
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("setmode", set_mode))
     app.add_handler(CallbackQueryHandler(handle_callback))
     app.add_handler(MessageHandler(filters.TEXT | filters.PHOTO | filters.VIDEO | filters.FORWARDED, handle_message))
-
     print("✅ Bot đang chạy trên Koyeb...")
     app.run_polling(close_loop=False)
 
