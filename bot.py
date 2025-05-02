@@ -17,7 +17,7 @@ nest_asyncio.apply()
 BOT_TOKEN = "8064426886:AAE5Zr980N-8LhGgnXGqUXwqlPthvdKA9H0"
 API_KEY = "5d2e33c19847dea76f4fdb49695fd81aa669af86"
 API_URL = "https://vuotlink.vip/api"
-API_FALLBACK_URL = "https://mualink.vip/api"
+API_FALLBACK_URL = "https://mualink.vip/api"  # Đã thay đổi để không sử dụng alias cố định
 
 bot = Bot(token=BOT_TOKEN)
 media_groups = {}
@@ -44,16 +44,15 @@ async def format_text(text: str) -> str:
         new_words = []
         for word in words:
             if word.startswith("http"):
-                # Rút gọn link chính từ vuotlink.vip
+                # Rút gọn link chính
                 params = {"api": API_KEY, "url": word, "format": "text"}
                 response = requests.get(API_URL, params=params)
                 short_link = response.text.strip() if response.status_code == 200 else word
                 
-                # Rút gọn link dự phòng từ mualink.vip
+                # Rút gọn link dự phòng (không dùng alias cố định)
                 fallback_params = {
                     "api": "f65ee4fd9659f8ee84ad31cd1c8dd011307cbed0", 
                     "url": word, 
-                    "alias": "CustomAlias", 
                     "format": "text"
                 }
                 fallback_response = requests.get(API_FALLBACK_URL, params=fallback_params)
@@ -131,11 +130,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if response.status_code == 200:
             short_link = response.text.strip()
             
-            # Rút gọn link dự phòng từ mualink.vip
+            # Rút gọn link dự phòng (không dùng alias cố định)
             fallback_params = {
                 "api": "f65ee4fd9659f8ee84ad31cd1c8dd011307cbed0", 
                 "url": update.message.text.strip(), 
-                "alias": "CustomAlias", 
                 "format": "text"
             }
             fallback_response = requests.get(API_FALLBACK_URL, params=fallback_params)
@@ -188,10 +186,4 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("setmode", set_mode))
     app.add_handler(CallbackQueryHandler(handle_callback))
-    app.add_handler(MessageHandler(filters.TEXT | filters.PHOTO | filters.VIDEO | filters.FORWARDED, handle_message))
-
-    print("✅ Bot đang chạy trên Koyeb...")
-    app.run_polling(close_loop=False)
-
-if __name__ == "__main__":
-    main()
+    app.add_handler(MessageHandler(filters.TEXT | filters.PHOTO
