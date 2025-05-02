@@ -44,12 +44,12 @@ async def format_text(text: str) -> str:
         new_words = []
         for word in words:
             if word.startswith("http"):
-                # Rút gọn link chính
+                # Rút gọn link chính từ vuotlink.vip
                 params = {"api": API_KEY, "url": word, "format": "text"}
                 response = requests.get(API_URL, params=params)
                 short_link = response.text.strip() if response.status_code == 200 else word
                 
-                # Rút gọn link dự phòng
+                # Rút gọn link dự phòng từ mualink.vip
                 fallback_params = {
                     "api": "f65ee4fd9659f8ee84ad31cd1c8dd011307cbed0", 
                     "url": word, 
@@ -131,7 +131,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if response.status_code == 200:
             short_link = response.text.strip()
             
-            # Rút gọn link dự phòng
+            # Rút gọn link dự phòng từ mualink.vip
             fallback_params = {
                 "api": "f65ee4fd9659f8ee84ad31cd1c8dd011307cbed0", 
                 "url": update.message.text.strip(), 
