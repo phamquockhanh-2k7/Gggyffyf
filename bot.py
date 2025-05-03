@@ -1,34 +1,19 @@
 import requests
-from telegram import (
-    Bot, Update, InputMediaPhoto, InputMediaVideo,
-    InlineKeyboardButton, InlineKeyboardMarkup
-)
-from telegram.ext import (
-    Application, MessageHandler, CommandHandler, CallbackQueryHandler,
-    ContextTypes, filters
-)
 import asyncio
-import nest_asyncio
-from keep_alive import keep_alive
+from telegram import Update
+from telegram.ext import ContextTypes
 
-nest_asyncio.apply()
-
-BOT_TOKEN = "8064426886:AAE5Zr980N-8LhGgnXGqUXwqlPthvdKA9H0"
-API_KEY = "5d2e33c19847dea76f4fdb49695fd81aa669af86"
-VUOTLINK_API_URL = "https://vuotlink.vip/api"
+# URL API
 MUALINK_API_URL = "https://mualink.vip/api"
-PASSWORD = "2703"
+VUOTLINK_API_URL = "https://vuotlink.vip/api"
 
-bot = Bot(token=BOT_TOKEN)
-media_groups = {}
-processing_tasks = {}
-user_modes = {}
-authenticated_users = set()
-awaiting_password = {}  # user_id → chế độ đang chọn
+# API Key (thay đổi giá trị này theo nhu cầu)
+MUALINK_API_KEY = "f65ee4fd9659f8ee84ad31cd1c8dd011307cbed0"
+VUOTLINK_API_KEY = "f65ee4fd9659f8ee84ad31cd1c8dd011307cbed0"  # Thay bằng API Key của bạn
 
 # Rút gọn link với mualink.vip
 async def shorten_link_mualink(url: str) -> str:
-    params_mualink = {"api": "f65ee4fd9659f8ee84ad31cd1c8dd011307cbed0", "url": url, "format": "text"}
+    params_mualink = {"api": MUALINK_API_KEY, "url": url, "format": "text"}
     response_mualink = requests.get(MUALINK_API_URL, params=params_mualink)
     if response_mualink.status_code == 200:
         return response_mualink.text.strip()
@@ -36,69 +21,11 @@ async def shorten_link_mualink(url: str) -> str:
 
 # Rút gọn link với vuotlink.vip
 async def shorten_link_vuotlink(url: str) -> str:
-    params_vuotlink = {"api": API_KEY, "url": url, "format": "text"}
+    params_vuotlink = {"api": VUOTLINK_API_KEY, "url": url, "format": "text"}
     response_vuotlink = requests.get(VUOTLINK_API_URL, params=params_vuotlink)
     if response_vuotlink.status_code == 200:
         return response_vuotlink.text.strip()
     return url
-
-# Format caption
-async def format_text(text: str) -> str:
-    lines = text.splitlines()
-    new_lines = []
-    for line in lines:
-        words = line.split()
-        new_words = []
-        for word in words:
-            if word.startswith("http"):
-                # Rút gọn link từ cả 2 dịch vụ
-                short_link_mualink = await shorten_link_mualink(word)
-                short_link_vuotlink = await shorten_link_vuotlink(word)
-                word = f"<s>{short_link_mualink}</s> | {short_link_vuotlink}"
-            else:
-                word = f"<b>{word}</b>"
-            new_words.append(word)
-        new_lines.append(" ".join(new_words))
-
-    new_lines.append(
-        '\n<b>Báo lỗi + đóng góp video tại đây</b> @nothinginthissss\n'
-        '<b>Theo dõi thông báo tại đây</b> @linkdinhcaovn\n'
-        '<b>CÁCH XEM LINK (nếu lỗi bot không gửi video):</b> @HuongDanVuotLink_SachKhongChu\n\n'
-        '⚠️<b>Kênh xem không cần vượt :</b> <a href="https://t.me/linkdinhcaovn/4">ấn vào đây!</a>'
-    )
-
-    return "\n".join(new_lines)
-
-# Xử lý nhóm media
-async def process_media_group(mgid: str, chat_id: int, mode: str):
-    group = media_groups.pop(mgid, [])
-    if not group:
-        await bot.send_message(chat_id=chat_id, text="⚠️ Bài viết không hợp lệ hoặc thiếu ảnh/video.")
-        return
-
-    group.sort(key=lambda m: m.message_id)
-    caption = group[0].caption if group[0].caption else ""
-    if mode == "shorten" and caption:
-        caption = await format_text(caption)
-
-    media = []
-    for i, msg in enumerate(group):
-        if msg.photo:
-            file_id = msg.photo[-1].file_id
-            media.append(InputMediaPhoto(file_id, caption=caption if i == 0 else None, parse_mode="HTML"))
-        elif msg.video:
-            file_id = msg.video.file_id
-            media.append(InputMediaVideo(file_id, caption=caption if i == 0 else None, parse_mode="HTML"))
-
-    if not media:
-        await bot.send_message(chat_id=chat_id, text="⚠️ Không có ảnh hoặc video hợp lệ.")
-        return
-
-    try:
-        await bot.send_media_group(chat_id=chat_id, media=media)
-    except Exception as e:
-        print(f"Lỗi khi gửi media_group: {e}")
-        await bot.send_message(chat_id=chat_id, text="⚠️ Gửi bài viết thất bại. Có thể file lỗi hoặc Telegram giới hạn.")
 
 # Tin nhắn văn bản/ảnh/video
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -106,17 +33,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user_id = update.effective_user.id
-
-    # Nếu đang chờ mật khẩu
-    if user_id in awaiting_password:
-        if update.message.text.strip() == PASSWORD:
-            user_modes[user_id] = awaiting_password[user_id]
-            authenticated_users.add(user_id)
-            del awaiting_password[user_id]
-            await update.message.reply_text("✅ Mật khẩu đúng. Chế độ đã được kích hoạt.")
-        else:
-            await update.message.reply_text("❌ Sai mật khẩu. Vui lòng thử lại.")
-        return
 
     # Nếu chưa xác thực mật khẩu → từ chối
     if user_id not in authenticated_users:
@@ -137,10 +53,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Rút gọn link từ cả 2 dịch vụ
         short_link_mualink = await shorten_link_mualink(update.message.text.strip())
         short_link_vuotlink = await shorten_link_vuotlink(update.message.text.strip())
+
         message = (
             "📢 <b>Bạn có link rút gọn mới</b>\n"
             f"🔗 <b>Link gốc:</b> <s>{update.message.text}</s>\n"
-            f"🔍 <b>Link rút gọn:</b> {short_link_mualink} | {short_link_vuotlink}\n\n"
+            f"🔍 <b>Link rút gọn mualink:</b> {short_link_mualink}\n"
+            f"🔍 <b>Link rút gọn vuotlink:</b> {short_link_vuotlink}\n\n"
             '⚠️<b>Kênh xem không cần vượt :</b> <a href="https://t.me/sachkhongchuu/299">ấn vào đây</a>'
         )
         await update.message.reply_text(message, parse_mode="HTML")
@@ -150,44 +68,3 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption = update.message.caption or ""
         new_caption = await format_text(caption) if mode == "shorten" else caption
         await update.message.copy(chat_id=update.effective_chat.id, caption=new_caption, parse_mode="HTML" if mode == "shorten" else None)
-
-# /setmode → chọn chế độ
-async def set_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_chat.type != "private":
-        return
-    buttons = [
-        [InlineKeyboardButton("🔗 Rút gọn link", callback_data="mode_shorten")],
-        [InlineKeyboardButton("🆓 Link Free", callback_data="mode_free")]
-    ]
-    await update.message.reply_text("🔐 Chọn chế độ. Bạn sẽ cần nhập mật khẩu:", reply_markup=InlineKeyboardMarkup(buttons))
-
-# Nút chọn chế độ
-async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
-
-    if query.data == "mode_shorten":
-        awaiting_password[user_id] = "shorten"
-    elif query.data == "mode_free":
-        awaiting_password[user_id] = "free"
-
-    await query.edit_message_text("🛡 Nhập mật khẩu để xác thực:")
-
-# Không phản hồi lệnh /start
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    return  # Không gửi gì cả
-
-# Main
-def main():
-    keep_alive()
-    app = Application.builder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("setmode", set_mode))
-    app.add_handler(CallbackQueryHandler(handle_callback))
-    app.add_handler(MessageHandler(filters.TEXT | filters.PHOTO | filters.VIDEO | filters.FORWARDED, handle_message))
-    print("✅ Bot đang chạy trên Koyeb...")
-    app.run_polling(close_loop=False)
-
-if __name__ == "__main__":
-    main()
