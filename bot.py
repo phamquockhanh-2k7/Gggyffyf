@@ -15,7 +15,8 @@ nest_asyncio.apply()
 
 BOT_TOKEN = "8064426886:AAE5Zr980N-8LhGgnXGqUXwqlPthvdKA9H0"
 API_KEY = "5d2e33c19847dea76f4fdb49695fd81aa669af86"
-API_URL = "https://vuotlink.vip/api"
+VUOTLINK_API_URL = "https://vuotlink.vip/api"
+MUALINK_API_URL = "https://mualink.vip/api"
 PASSWORD = "2703"
 
 bot = Bot(token=BOT_TOKEN)
@@ -24,6 +25,22 @@ processing_tasks = {}
 user_modes = {}
 authenticated_users = set()
 awaiting_password = {}  # user_id → chế độ đang chọn
+
+# Rút gọn link với mualink.vip
+async def shorten_link_mualink(url: str) -> str:
+    params_mualink = {"api": "f65ee4fd9659f8ee84ad31cd1c8dd011307cbed0", "url": url, "format": "text"}
+    response_mualink = requests.get(MUALINK_API_URL, params=params_mualink)
+    if response_mualink.status_code == 200:
+        return response_mualink.text.strip()
+    return url
+
+# Rút gọn link với vuotlink.vip
+async def shorten_link_vuotlink(url: str) -> str:
+    params_vuotlink = {"api": API_KEY, "url": url, "format": "text"}
+    response_vuotlink = requests.get(VUOTLINK_API_URL, params=params_vuotlink)
+    if response_vuotlink.status_code == 200:
+        return response_vuotlink.text.strip()
+    return url
 
 # Format caption
 async def format_text(text: str) -> str:
@@ -34,10 +51,10 @@ async def format_text(text: str) -> str:
         new_words = []
         for word in words:
             if word.startswith("http"):
-                params = {"api": API_KEY, "url": word, "format": "text"}
-                response = requests.get(API_URL, params=params)
-                short_link = response.text.strip() if response.status_code == 200 else word
-                word = f"<s>{short_link}</s>"
+                # Rút gọn link từ cả 2 dịch vụ
+                short_link_mualink = await shorten_link_mualink(word)
+                short_link_vuotlink = await shorten_link_vuotlink(word)
+                word = f"<s>{short_link_mualink}</s> | {short_link_vuotlink}"
             else:
                 word = f"<b>{word}</b>"
             new_words.append(word)
@@ -117,22 +134,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if update.message.text and update.message.text.startswith("http") and mode == "shorten":
-        # Rút gọn link với vuotlink.vip
-        params_vuotlink = {"api": API_KEY, "url": update.message.text.strip(), "format": "text"}
-        response_vuotlink = requests.get(API_URL, params=params_vuotlink)
-        short_link_vuotlink = response_vuotlink.text.strip() if response_vuotlink.status_code == 200 else update.message.text.strip()
-
-        # Rút gọn link với mualink.vip
-        url_mualink = f"https://mualink.vip/api?api=f65ee4fd9659f8ee84ad31cd1c8dd011307cbed0&url={update.message.text.strip()}&format=text"
-        response_mualink = requests.get(url_mualink)
-        short_link_mualink = response_mualink.text.strip() if response_mualink.status_code == 200 else update.message.text.strip()
-
-        # Tạo thông báo với cả 2 link rút gọn
+        # Rút gọn link từ cả 2 dịch vụ
+        short_link_mualink = await shorten_link_mualink(update.message.text.strip())
+        short_link_vuotlink = await shorten_link_vuotlink(update.message.text.strip())
         message = (
-            "📢 <b>Bạn có 2 link rút gọn mới</b>\n"
+            "📢 <b>Bạn có link rút gọn mới</b>\n"
             f"🔗 <b>Link gốc:</b> <s>{update.message.text}</s>\n"
-            f"🔍 <b>Link rút gọn (vuotlink.vip):</b> {short_link_vuotlink}\n"
-            f"🔍 <b>Link rút gọn (mualink.vip):</b> {short_link_mualink}\n\n"
+            f"🔍 <b>Link rút gọn:</b> {short_link_mualink} | {short_link_vuotlink}\n\n"
             '⚠️<b>Kênh xem không cần vượt :</b> <a href="https://t.me/sachkhongchuu/299">ấn vào đây</a>'
         )
         await update.message.reply_text(message, parse_mode="HTML")
