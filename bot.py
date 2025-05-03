@@ -4,7 +4,7 @@ import requests
 import asyncio
 from flask import Flask
 from threading import Thread
-from telegram import Update, InputMediaPhoto, InputMediaVideo, InputMediaDocument, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InputMediaPhoto, InputMediaVideo, InputMediaDocument, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
 # Cấu hình
@@ -24,13 +24,6 @@ def home():
 def generate_alias():
     return ''.join(random.choices(string.ascii_letters + string.digits, k=12))
 
-async def send_media_in_batches(chat_id, media_group, context):
-    batch_size = 10
-    for i in range(0, len(media_group), batch_size):
-        batch = media_group[i:i + batch_size]
-        await context.bot.send_media_group(chat_id=chat_id, media=batch, protect_content=True)
-        await asyncio.sleep(1)
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     args = context.args
@@ -41,19 +34,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             response = requests.get(f"{FIREBASE_URL}/{alias}.json").json()
 
             files = response if isinstance(response, list) else \
-                [v for _, v in sorted(response.items(), key=lambda x: int(x[0]))] if response else []
+                   [v for _,v in sorted(response.items(), key=lambda x: int(x[0]))] if response else []
 
             if not files:
                 raise ValueError("Nội dung không tồn tại")
 
+            text_list = []
             media_group = []
+
             for item in files:
                 if item['type'] == 'text':
-                    await update.message.reply_text(
-                        text=item['file_id'],
-                        protect_content=True,
-                        disable_web_page_preview=True
-                    )
+                    text_list.append(item['file_id'])
                 else:
                     media_class = {
                         'photo': InputMediaPhoto,
@@ -62,8 +53,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     }[item['type']]
                     media_group.append(media_class(item['file_id']))
 
-            if media_group:
-                await send_media_in_batches(update.effective_chat.id, media_group, context)
+            # Gửi text nếu có
+            for text in text_list:
+                await update.message.reply_text(
+                    text=text,
+                    protect_content=True,
+                    disable_web_page_preview=True
+                )
+
+            # Gửi media theo nhóm 10
+            for i in range(0, len(media_group), 10):
+                await update.message.reply_media_group(
+                    media=media_group[i:i+10],
+                    protect_content=True
+                )
+                await asyncio.sleep(1)
 
             await update.message.reply_text(f"📌 Bí danh: <code>{alias}</code>", parse_mode="HTML")
 
@@ -71,33 +75,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"❌ Lỗi: {str(e)}")
         return
 
-    keyboard = [
-        [InlineKeyboardButton("📂 Mở kho ảnh", url="https://t.me/yourchannel")],
-        [InlineKeyboardButton("🌐 Truy cập website", url="https://yourwebsite.com")]
-    ]
-    await update.message.reply_text(
-        "👋 Xin chào! Hãy nhấn vào các nút bên dưới để xem nội dung.",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    # Nếu không có alias
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("📤 Tạo bài viết mới", callback_data="newpost"),
+        InlineKeyboardButton("🌐 Truy cập bot", url="https://t.me/filebotstorage_bot")
+    ]])
+    await update.message.reply_text("👋 Xin chào! Hãy chọn thao tác bên dưới:", reply_markup=keyboard)
 
 async def newpost(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
+    user_id = update.effective_user.id
     user_sessions[user_id] = []
     await update.message.reply_text("📤 Gửi nội dung (ảnh/video/file/text) và nhấn /done khi xong")
 
 async def handle_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-
-    # Nếu người dùng chưa dùng /newpost thì không cho lưu
     if user_id not in user_sessions:
-        keyboard = [
-            [InlineKeyboardButton("📂 Mở kho ảnh", url="https://t.me/yourchannel")],
-            [InlineKeyboardButton("🌐 Truy cập website", url="https://yourwebsite.com")]
-        ]
-        await update.message.reply_text(
-            "👋 Xin chào! Hãy nhấn vào các nút bên dưới để xem nội dung.",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+        await start(update, context)
         return
 
     if update.message.media_group_id:
@@ -157,7 +150,7 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bot_username = (await context.bot.get_me()).username
         await update.message.reply_text(
             f"✅ Tạo thành công!\n"
-            f"🔗 Link: t.me/{bot_username}?start={alias}\n"
+            f"🔗 Link: https://t.me/{bot_username}?start={alias}\n"
             f"📌 Bí danh: <code>{alias}</code>",
             parse_mode="HTML"
         )
@@ -166,12 +159,14 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Lỗi hệ thống: {str(e)}")
 
 def run_bot():
-    Thread(target=web_server.run, kwargs={'host': '0.0.0.0', 'port': PORT}).start()
+    Thread(target=web_server.run, kwargs={'host':'0.0.0.0','port':PORT}).start()
     app = Application.builder().token(BOT_TOKEN).build()
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("done", done))
-    app.add_handler(CommandHandler("newpost", newpost))  # lệnh ẩn
+    app.add_handler(CommandHandler("newpost", newpost))  # lệnh ẩn không gợi ý
     app.add_handler(MessageHandler(filters.ALL, handle_content))
+
     print("🤖 Bot đang hoạt động...")
     app.run_polling()
 
