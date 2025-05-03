@@ -3,7 +3,6 @@ from telegram import Bot, Update, InputMediaPhoto, InputMediaVideo, InlineKeyboa
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 import asyncio
 import nest_asyncio
-import random
 import re
 from keep_alive import keep_alive
 import logging
@@ -62,20 +61,22 @@ async def shorten_url(url: str) -> Tuple[str, str]:
     return vuotlink, mualink
 
 async def format_caption(text: str) -> str:
-    """Định dạng caption với link rút gọn"""
+    """Định dạng caption với link rút gọn (phiên bản ổn định)"""
     if not text:
         return ""
     
-    async def _process(match):
-        url = match.group(0)
-        vlink, mlink = await shorten_url(url)
-        return f"\n<b>• VUOTLINK:</b> {vlink}\n<b>• MUALINK:</b> {mlink}"
-
-    # SỬA LỖI CHÍNH Ở ĐÂY: Đóng ngoặc đúng cách
-    pattern = re.compile(r'https?://[^\s]+')
-    result = await asyncio.to_thread(
-        lambda: pattern.sub(lambda m: asyncio.run(_process(m)), text)
+    # Hàm đồng bộ để xử lý thay thế
+    def sync_replace(text: str) -> str:
+        pattern = re.compile(r'https?://[^\s]+')
+        def replace(match):
+            url = match.group(0)
+            # Chạy coroutine trong thread
+            vlink, mlink = asyncio.run(shorten_url(url))
+            return f"\n<b>• VUOTLINK:</b> {vlink}\n<b>• MUALINK:</b> {mlink}"
+        return pattern.sub(replace, text)
     
+    # Chạy toàn bộ xử lý sync trong thread riêng
+    result = await asyncio.to_thread(sync_replace, text)
     return f"{result}\n\n<b>🔗 Đã rút gọn tự động</b>"
 
 # --------------------- HANDLERS ---------------------
@@ -83,7 +84,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🤖 <b>Bot rút gọn link đa dịch vụ</b>\n\n"
         "Gửi link hoặc bài viết có chứa link để tự động rút gọn bằng:\n"
-        "• <b>VuotLink</b>\n• <b>MuaLink</b>",
+        "• <b>VuotLink</b>\n• <b>MuaLink</b>\n\n"
+        "⚙️ <i>/help để xem hướng dẫn</i>",
         parse_mode="HTML"
     )
 
@@ -99,7 +101,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"🌐 <b>Link gốc:</b> {url}\n\n"
             f"🔗 <b>VUOTLINK:</b> {vlink}\n"
-            f"🔗 <b>MUALINK:</b> {mlink}",
+            f"🔗 <b>MUALINK:</b> {mlink}\n\n"
+            "✅ <i>Đã rút gọn tự động</i>",
             parse_mode="HTML",
             disable_web_page_preview=True
         )
