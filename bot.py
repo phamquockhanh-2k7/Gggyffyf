@@ -64,7 +64,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     user_sessions[user_id] = []
-    await update.message.reply_text("📤 Gửi nội dung (ảnh/video/file/text) và nhấn /done khi xong")
+    await update.message.reply_text("📤 Gửi nội dung (ảnh/video/file/text và nhấn /done khi xong")
 
 async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
