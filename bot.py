@@ -17,6 +17,8 @@ nest_asyncio.apply()
 BOT_TOKEN = "8064426886:AAE5Zr980N-8LhGgnXGqUXwqlPthvdKA9H0"
 API_KEY = "5d2e33c19847dea76f4fdb49695fd81aa669af86"
 API_URL = "https://vuotlink.vip/api"
+API_KEY2 = "f65ee4fd9659f8ee84ad31cd1c8dd011307cbed0"
+API_URL2 = "https://mualink.vip/api"
 
 bot = Bot(token=BOT_TOKEN)
 media_groups = {}
@@ -35,10 +37,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-# Hàm rút gọn link
+# Hàm rút gọn link vuotlink.vip
 def shorten_link(url: str) -> str:
     params = {"api": API_KEY, "url": url, "format": "text"}
     response = requests.get(API_URL, params=params)
+    return response.text.strip() if response.status_code == 200 else url
+
+# Hàm rút gọn link mualink.vip
+def shorten_link2(url: str) -> str:
+    params = {"api": API_KEY2, "url": url, "format": "text"}
+    response = requests.get(API_URL2, params=params)
     return response.text.strip() if response.status_code == 200 else url
 
 # Hàm định dạng văn bản
@@ -121,10 +129,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Link rút gọn
     if update.message.text and update.message.text.startswith("http") and mode == "shorten":
         short_link = shorten_link(update.message.text.strip())
+        short_link2 = shorten_link2(update.message.text.strip())
         message = (
             "📢 <b>Bạn có link rút gọn mới</b>\n"
             f"🔗 <b>Link gốc:</b> <s>{update.message.text}</s>\n"
             f"🔍 <b>Link rút gọn:</b> {short_link}\n\n"
+            f"🔍 <b>Link rút gọn 2:</b> {short_link2}\n\n"
             '⚠️<b>Kênh xem không cần vượt :</b> <a href="https://t.me/sachkhongchuu/299">ấn vào đây</a>'
         )
         await update.message.reply_text(message, parse_mode="HTML")
