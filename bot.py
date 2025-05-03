@@ -35,24 +35,31 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-# Format text (rút gọn link + định dạng)
+# Hàm rút gọn link
+def shorten_link(url: str) -> str:
+    params = {"api": API_KEY, "url": url, "format": "text"}
+    response = requests.get(API_URL, params=params)
+    return response.text.strip() if response.status_code == 200 else url
+
+# Hàm định dạng văn bản
 async def format_text(text: str) -> str:
     lines = text.splitlines()
     new_lines = []
+    
     for line in lines:
         words = line.split()
         new_words = []
+        
         for word in words:
-            if word.startswith("http"):
-                params = {"api": API_KEY, "url": word, "format": "text"}
-                response = requests.get(API_URL, params=params)
-                short_link = response.text.strip() if response.status_code == 200 else word
-                word = f"<s>{short_link}</s>"
+            if word.startswith("http"):  # Kiểm tra nếu là link
+                word = f"<s>{shorten_link(word)}</s>"
             else:
-                word = f"<b>{word}</b>"
+                word = f"<b>{word}</b>"  # Định dạng in đậm
             new_words.append(word)
+        
         new_lines.append(" ".join(new_words))
 
+    # Thêm thông tin vào cuối
     new_lines.append(
         '\n<b>Báo lỗi + đóng góp video tại đây</b> @nothinginthissss\n'
         '<b>Theo dõi thông báo tại đây</b> @linkdinhcaovn\n'
@@ -113,17 +120,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Link rút gọn
     if update.message.text and update.message.text.startswith("http") and mode == "shorten":
-        params = {"api": API_KEY, "url": update.message.text.strip(), "format": "text"}
-        response = requests.get(API_URL, params=params)
-        if response.status_code == 200:
-            short_link = response.text.strip()
-            message = (
-                "📢 <b>Bạn có link rút gọn mới</b>\n"
-                f"🔗 <b>Link gốc:</b> <s>{update.message.text}</s>\n"
-                f"🔍 <b>Link rút gọn:</b> {short_link}\n\n"
-                '⚠️<b>Kênh xem không cần vượt :</b> <a href="https://t.me/sachkhongchuu/299">ấn vào đây</a>'
-            )
-            await update.message.reply_text(message, parse_mode="HTML")
+        short_link = shorten_link(update.message.text.strip())
+        message = (
+            "📢 <b>Bạn có link rút gọn mới</b>\n"
+            f"🔗 <b>Link gốc:</b> <s>{update.message.text}</s>\n"
+            f"🔍 <b>Link rút gọn:</b> {short_link}\n\n"
+            '⚠️<b>Kênh xem không cần vượt :</b> <a href="https://t.me/sachkhongchuu/299">ấn vào đây</a>'
+        )
+        await update.message.reply_text(message, parse_mode="HTML")
         return
 
     # Bài viết chuyển tiếp
