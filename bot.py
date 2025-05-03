@@ -1,13 +1,11 @@
 import requests
-from telegram import Bot, Update, InputMediaPhoto, InputMediaVideo, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 import asyncio
-import nest_asyncio
-import re
-from keep_alive import keep_alive
 import logging
-from typing import Tuple
+import re
+import time
 from urllib.parse import quote
+from telegram import Bot, Update, InputMediaPhoto, InputMediaVideo
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
 # --------------------- CẤU HÌNH ---------------------
 logging.basicConfig(
@@ -16,81 +14,93 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-nest_asyncio.apply()
-
-# CẤU HÌNH BOT (THAY BẰNG THÔNG TIN THẬT)
-BOT_TOKEN = "8064426886:AAE5Zr980N-8LhGgnXGqUXwqlPthvdKA9H0"
+# CẤU HÌNH API (THAY BẰNG THÔNG TIN THẬT)
+BOT_TOKEN = "YOUR_BOT_TOKEN"
 API_CONFIG = {
+    "mualink": {  # ĐƯỢC ƯU TIÊN XỬ LÝ TRƯỚC
+        "api_key": "f65ee4fd9659f8ee84ad31cd1c8dd011307cbed0",
+        "api_url": "https://mualink.vip/api",
+        "timeout": 20
+    },
     "vuotlink": {
         "api_key": "5d2e33c19847dea76f4fdb49695fd81aa669af86",
-        "api_url": "https://vuotlink.vip/api"
-    },
-    "mualink": {
-        "api_key": "f65ee4fd9659f8ee84ad31cd1c8dd011307cbed0",
-        "api_url": "https://mualink.vip/api"
+        "api_url": "https://vuotlink.vip/api",
+        "timeout": 10
     }
 }
 
-bot = Bot(token=BOT_TOKEN)
-media_groups = {}
-processing_tasks = {}
-user_modes = {}
-
 # --------------------- CORE FUNCTIONS ---------------------
 async def shorten_url(url: str) -> Tuple[str, str]:
-    """Rút gọn URL bằng cả 2 dịch vụ"""
+    """Rút gọn URL với MuaLink ưu tiên"""
     async def _shorten(service: str) -> str:
-        try:
-            config = API_CONFIG[service]
-            params = {
-                "api": config["api_key"],
-                "url": quote(url, safe=''),
-                "format": "text"
-            }
-            response = requests.get(config["api_url"], params=params, timeout=10)
-            if response.status_code == 200 and response.text.strip() and response.text.strip() != url:
-                return response.text.strip()
-        except Exception as e:
-            logger.warning(f"Lỗi {service}: {str(e)}")
-        return url
+        config = API_CONFIG[service]
+        for attempt in range(2):  # Thử tối đa 2 lần
+            try:
+                params = {
+                    "api": config["api_key"],
+                    "url": quote(url, safe=''),
+                    "format": "text",
+                    "_": str(int(time.time()))  # Cache buster
+                }
+                
+                response = requests.get(
+                    config["api_url"],
+                    params=params,
+                    timeout=config["timeout"]
+                )
+                
+                if response.status_code == 200:
+                    result = response.text.strip()
+                    if result and result != url:
+                        if service == "mualink":
+                            if result.startswith("https://mualink.vip/"):
+                                return result
+                        else:
+                            return result
+                
+                await asyncio.sleep(1)  # Đợi trước khi retry
+                
+            except Exception as e:
+                logger.warning(f"{service} attempt {attempt+1} failed: {str(e)}")
+                await asyncio.sleep(1)
+        
+        return url  # Fallback về URL gốc
 
-    vuotlink, mualink = await asyncio.gather(
-        _shorten("vuotlink"),
-        _shorten("mualink")
-    )
+    # Xử lý MuaLink TRƯỚC, nếu fail mới dùng VuotLink
+    mualink = await _shorten("mualink")
+    vuotlink = await _shorten("vuotlink") if mualink == url else url
+    
+    logger.info(f"Kết quả: MuaLink={mualink}, VuotLink={vuotlink}")
     return vuotlink, mualink
 
 async def format_caption(text: str) -> str:
-    """Định dạng caption với link rút gọn (phiên bản ổn định)"""
+    """Định dạng caption với link đã rút gọn"""
     if not text:
         return ""
     
-    # Hàm đồng bộ để xử lý thay thế
-    def sync_replace(text: str) -> str:
-        pattern = re.compile(r'https?://[^\s]+')
-        def replace(match):
-            url = match.group(0)
-            # Chạy coroutine trong thread
-            vlink, mlink = asyncio.run(shorten_url(url))
-            return f"\n<b>• VUOTLINK:</b> {vlink}\n<b>• MUALINK:</b> {mlink}"
-        return pattern.sub(replace, text)
+    urls = re.findall(r'https?://[^\s]+', text)
+    for url in urls:
+        vlink, mlink = await shorten_url(url)
+        replacement = (
+            f"\n<b>• VUOTLINK:</b> {vlink if vlink != url else '❌ Lỗi'}\n"
+            f"<b>• MUALINK:</b> {mlink if mlink != url else '❌ Lỗi'}"
+        )
+        text = text.replace(url, replacement)
     
-    # Chạy toàn bộ xử lý sync trong thread riêng
-    result = await asyncio.to_thread(sync_replace, text)
-    return f"{result}\n\n<b>🔗 Đã rút gọn tự động</b>"
+    return f"{text}\n\n<b>🔗 Đã rút gọn tự động</b>"
 
 # --------------------- HANDLERS ---------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🤖 <b>Bot rút gọn link đa dịch vụ</b>\n\n"
-        "Gửi link hoặc bài viết có chứa link để tự động rút gọn bằng:\n"
-        "• <b>VuotLink</b>\n• <b>MuaLink</b>\n\n"
-        "⚙️ <i>/help để xem hướng dẫn</i>",
+        "Gửi link hoặc bài viết có chứa link để tự động rút gọn\n"
+        "• MuaLink được ưu tiên xử lý trước\n"
+        "• VuotLink sẽ được dùng khi MuaLink lỗi",
         parse_mode="HTML"
     )
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_chat.type != "private":
+    if not update.message or update.effective_chat.type != "private":
         return
 
     # Xử lý link trực tiếp
@@ -98,11 +108,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         url = update.message.text.strip()
         vlink, mlink = await shorten_url(url)
         
+        status = ""
+        if mlink == url:
+            status = "\n\n⚠️ MuaLink đang bảo trì, đã dùng VuotLink thay thế"
+        
         await update.message.reply_text(
             f"🌐 <b>Link gốc:</b> {url}\n\n"
-            f"🔗 <b>VUOTLINK:</b> {vlink}\n"
-            f"🔗 <b>MUALINK:</b> {mlink}\n\n"
-            "✅ <i>Đã rút gọn tự động</i>",
+            f"🔗 <b>MuaLink:</b> {mlink}\n"
+            f"🔗 <b>VuotLink:</b> {vlink}"
+            f"{status}",
             parse_mode="HTML",
             disable_web_page_preview=True
         )
@@ -119,17 +133,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --------------------- MAIN ---------------------
 def main():
-    keep_alive()
-    
     app = Application.builder().token(BOT_TOKEN).build()
-    
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(
         filters.TEXT | filters.PHOTO | filters.VIDEO,
         handle_message
     ))
-
-    logger.info("Bot đã sẵn sàng")
+    
+    logger.info("Bot đã sẵn sàng, MuaLink được ưu tiên xử lý trước...")
     app.run_polling()
 
 if __name__ == "__main__":
