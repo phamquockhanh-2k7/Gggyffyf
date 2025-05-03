@@ -117,17 +117,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if update.message.text and update.message.text.startswith("http") and mode == "shorten":
-        params = {"api": API_KEY, "url": update.message.text.strip(), "format": "text"}
-        response = requests.get(API_URL, params=params)
-        if response.status_code == 200:
-            short_link = response.text.strip()
-            message = (
-                "📢 <b>Bạn có link rút gọn mới</b>\n"
-                f"🔗 <b>Link gốc:</b> <s>{update.message.text}</s>\n"
-                f"🔍 <b>Link rút gọn:</b> {short_link}\n\n"
-                '⚠️<b>Kênh xem không cần vượt :</b> <a href="https://t.me/sachkhongchuu/299">ấn vào đây</a>'
-            )
-            await update.message.reply_text(message, parse_mode="HTML")
+        # Rút gọn link với vuotlink.vip
+        params_vuotlink = {"api": API_KEY, "url": update.message.text.strip(), "format": "text"}
+        response_vuotlink = requests.get(API_URL, params=params_vuotlink)
+        short_link_vuotlink = response_vuotlink.text.strip() if response_vuotlink.status_code == 200 else update.message.text.strip()
+
+        # Rút gọn link với mualink.vip
+        url_mualink = f"https://mualink.vip/api?api=f65ee4fd9659f8ee84ad31cd1c8dd011307cbed0&url={update.message.text.strip()}&format=text"
+        response_mualink = requests.get(url_mualink)
+        short_link_mualink = response_mualink.text.strip() if response_mualink.status_code == 200 else update.message.text.strip()
+
+        # Tạo thông báo với cả 2 link rút gọn
+        message = (
+            "📢 <b>Bạn có 2 link rút gọn mới</b>\n"
+            f"🔗 <b>Link gốc:</b> <s>{update.message.text}</s>\n"
+            f"🔍 <b>Link rút gọn (vuotlink.vip):</b> {short_link_vuotlink}\n"
+            f"🔍 <b>Link rút gọn (mualink.vip):</b> {short_link_mualink}\n\n"
+            '⚠️<b>Kênh xem không cần vượt :</b> <a href="https://t.me/sachkhongchuu/299">ấn vào đây</a>'
+        )
+        await update.message.reply_text(message, parse_mode="HTML")
         return
 
     if (update.message.forward_date or update.message.forward_from or update.message.forward_sender_name) or update.message.caption:
