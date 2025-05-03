@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 nest_asyncio.apply()
 
 # CẤU HÌNH BOT (THAY BẰNG THÔNG TIN THẬT CỦA BẠN)
-BOT_TOKEN = "8064426886:AAE5Zr980N-8LhGgnXGqUXwqlPthvdKA9H0"  # 👈 Thay bằng token thật
+BOT_TOKEN = "8064426886:AAE5Zr980N-8LhGgnXGqUXwqlPthvdKA9H0"
 API_CONFIG = {
     "vuotlink": {
         "api_key": "5d2e33c19847dea76f4fdb49695fd81aa669af86",
@@ -38,169 +38,105 @@ processing_tasks = {}
 user_modes = {}
 
 # --------------------- CORE FUNCTIONS ---------------------
-def shorten_link(url: str, service: str) -> str:
-    """Rút gọn link với xử lý riêng cho từng dịch vụ"""
-    try:
-        config = API_CONFIG.get(service)
-        if not config:
-            logger.error(f"Service {service} not configured")
-            return url
-
-        # Chuẩn bị params chung
-        params = {
-            "api": config["api_key"],
-            "url": quote(url, safe=''),
-            "format": "text"  # Bắt buộc cho cả 2 dịch vụ
-        }
-
-        response = requests.get(
-            config["api_url"],
-            params=params,
-            timeout=15
-        )
-        
-        # Debug
-        logger.info(f"{service} API call: {response.url}")
-        logger.info(f"Response: {response.status_code} - {response.text}")
-
-        if response.status_code == 200:
-            result = response.text.strip()
-            
-            # Xử lý đặc biệt cho MuaLink
-            if service == "mualink":
-                if not result:  # Trường hợp trả về trống
-                    logger.warning("MuaLink returned empty response")
-                    return url
-                elif result == url:  # Trường hợp không rút gọn được
-                    logger.warning("MuaLink returned original URL")
-                    return url
-                    
-            return result
+async def shorten_url(url: str) -> Tuple[str, str]:
+    """Rút gọn URL bằng cả 2 dịch vụ với cơ chế retry"""
+    async def _shorten(service: str) -> str:
+        for _ in range(2):  # Thử tối đa 2 lần
+            try:
+                config = API_CONFIG[service]
+                params = {
+                    "api": config["api_key"],
+                    "url": quote(url, safe=''),
+                    "format": "text"
+                }
+                response = requests.get(config["api_url"], params=params, timeout=10)
+                
+                if response.status_code == 200 and response.text.strip() and response.text.strip() != url:
+                    return response.text.strip()
+            except Exception as e:
+                logger.warning(f"Lỗi {service}: {str(e)}")
+                await asyncio.sleep(1)
         return url
 
-    except Exception as e:
-        logger.error(f"Error shortening with {service}: {str(e)}")
-        return url
-
-def shorten_all_links(url: str) -> Tuple[str, str]:
-    """Rút gọn bằng cả 2 dịch vụ và kiểm tra kết quả"""
-    logger.info(f"Shortening URL: {url}")
+    # Chạy song song cả 2 dịch vụ
+    vuotlink, mualink = await asyncio.gather(
+        _shorten("vuotlink"),
+        _shorten("mualink")
+    )
     
-    vuotlink = shorten_link(url, "vuotlink")
-    mualink = shorten_link(url, "mualink")
-    
-    # Kiểm tra chất lượng kết quả
-    if vuotlink == url:
-        logger.warning("VuotLink failed to shorten")
-    if mualink == url:
-        logger.warning("MuaLink failed to shorten")
-    
+    logger.info(f"Rút gọn thành công: V={vuotlink}, M={mualink}")
     return vuotlink, mualink
 
-async def format_text_with_dual_links(text: str) -> str:
-    """Định dạng văn bản với cả 2 phiên bản rút gọn"""
+async def format_caption(text: str) -> str:
+    """Định dạng caption với link rút gọn"""
     if not text:
         return ""
     
-    def process_line(line: str) -> str:
-        processed_words = []
-        for word in line.split():
-            if re.match(r'^https?://', word):
-                vlink, mlink = shorten_all_links(word)
-                processed_words.append(
-                    f"<b>• VUOTLINK:</b> {vlink}\n"
-                    f"<b>• MUALINK:</b> {mlink if mlink != word else '❌ Lỗi'}"
-                )
-            else:
-                processed_words.append(f"<b>{word}</b>")
-        return " ".join(processed_words)
+    async def _process(match):
+        url = match.group(0)
+        vlink, mlink = await shorten_url(url)
+        return (
+            f"\n<b>• VUOTLINK:</b> {vlink}"
+            f"\n<b>• MUALINK:</b> {mlink}"
+        )
     
-    lines = [process_line(line) for line in text.splitlines() if line.strip()]
+    # Xử lý tất cả link trong text
+    pattern = re.compile(r'https?://[^\s]+')
+    result = await asyncio.to_thread(pattern.sub, lambda m: asyncio.run_coroutine_threadsafe(_process(m), text)
     
-    footer = (
-        "\n\n<b>📢 Thông báo:</b> Đã rút gọn bằng 2 dịch vụ độc lập\n"
-        "<b>⚠️ Hỗ trợ:</b> @nothinginthissss"
-    )
-    return "\n".join(lines) + footer
+    return f"{result}\n\n<b>🔗 Đã rút gọn tự động</b>"
 
 # --------------------- HANDLERS ---------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 Gửi link hoặc bài viết để rút gọn bằng 2 dịch vụ\n"
-        "⚙️ /setmode để thay đổi chế độ",
-        parse_mode="Markdown"
+        "🛠 <b>Bot rút gọn link đa dịch vụ</b>\n\n"
+        "• Gửi link trực tiếp hoặc bài viết có chứa link\n"
+        "• Tự động rút gọn bằng <b>VuotLink</b> và <b>MuaLink</b>\n\n"
+        "⚙️ <i>/help để xem hướng dẫn</i>",
+        parse_mode="HTML"
     )
-
-async def set_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    buttons = [
-        [InlineKeyboardButton("🔗 Chế độ rút gọn", callback_data="mode_shorten")],
-        [InlineKeyboardButton("🆓 Chế độ gốc", callback_data="mode_free")]
-    ]
-    await update.message.reply_text(
-        "CHỌN CHẾ ĐỘ:",
-        reply_markup=InlineKeyboardMarkup(buttons)
-    )
-
-async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
-    
-    if query.data == "mode_shorten":
-        user_modes[user_id] = "shorten"
-        await query.edit_message_text("✅ Đã bật chế độ rút gọn")
-    else:
-        user_modes[user_id] = "free"
-        await query.edit_message_text("🆓 Đã bật chế độ link gốc")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != "private":
         return
-        
-    user_id = update.effective_user.id
-    mode = user_modes.get(user_id, "shorten")
 
     # Xử lý link trực tiếp
     if update.message.text and re.match(r'^https?://', update.message.text.strip()):
         url = update.message.text.strip()
-        vlink, mlink = shorten_all_links(url)
+        vlink, mlink = await shorten_url(url)
         
         await update.message.reply_text(
-            f"🔗 <b>Gốc:</b> {url}\n\n"
-            f"📌 <b>VUOTLINK:</b> {vlink}\n"
-            f"📌 <b>MUALINK:</b> {mlink if mlink != url else '❌ Lỗi'}\n\n"
-            "⚠️ Đã rút gọn tự động",
+            f"🌐 <b>Link gốc:</b> {url}\n\n"
+            f"🔗 <b>VUOTLINK:</b> {vlink}\n"
+            f"🔗 <b>MUALINK:</b> {mlink}\n\n"
+            "✅ <i>Đã rút gọn tự động</i>",
             parse_mode="HTML",
             disable_web_page_preview=True
         )
         return
 
-    # Xử lý media
-    if update.message.caption or update.message.photo or update.message.video:
-        caption = update.message.caption or ""
-        if mode == "shorten":
-            new_caption = await format_text_with_dual_links(caption)
-        else:
-            new_caption = caption
-            
+    # Xử lý media có caption
+    if update.message.caption or (update.message.photo or update.message.video):
+        new_caption = await format_caption(update.message.caption or "")
         await update.message.copy(
             chat_id=update.effective_chat.id,
             caption=new_caption,
-            parse_mode="HTML" if mode == "shorten" else None
+            parse_mode="HTML"
         )
 
 # --------------------- MAIN ---------------------
 def main():
-    keep_alive()  # Bỏ qua nếu không dùng Replit
+    keep_alive()
     
     app = Application.builder().token(BOT_TOKEN).build()
     
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("setmode", set_mode))
-    app.add_handler(CallbackQueryHandler(handle_callback))
-    app.add_handler(MessageHandler(filters.TEXT | filters.PHOTO | filters.VIDEO, handle_message))
+    app.add_handler(MessageHandler(
+        filters.TEXT | filters.PHOTO | filters.VIDEO,
+        handle_message
+    ))
 
-    logger.info("Bot đang chạy...")
+    logger.info("Bot đã sẵn sàng")
     app.run_polling()
 
 if __name__ == "__main__":
