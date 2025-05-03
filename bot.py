@@ -10,13 +10,12 @@ from telegram.ext import Application, CommandHandler, MessageHandler, ContextTyp
 # Cấu hình
 BOT_TOKEN = "7728975615:AAEsj_3faSR_97j4-GW_oYnOy1uYhNuuJP0"
 FIREBASE_URL = "https://bot-telegram-99852-default-rtdb.firebaseio.com/shared"
-PORT = 8000
+PORT = 8000  # Port bắt buộc cho Koyeb
 
 # Khởi tạo Flask
 web_server = Flask(__name__)
 user_sessions = {}
 media_groups = {}
-posting_status = {}
 
 @web_server.route('/')
 def home():
@@ -24,6 +23,13 @@ def home():
 
 def generate_alias():
     return ''.join(random.choices(string.ascii_letters + string.digits, k=12))
+
+async def send_media_in_batches(chat_id, media_group, context):
+    batch_size = 10
+    for i in range(0, len(media_group), batch_size):
+        batch = media_group[i:i + batch_size]
+        await context.bot.send_media_group(chat_id=chat_id, media=batch, protect_content=True)
+        await asyncio.sleep(1)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -35,7 +41,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             response = requests.get(f"{FIREBASE_URL}/{alias}.json").json()
 
             files = response if isinstance(response, list) else \
-                   [v for _, v in sorted(response.items(), key=lambda x: int(x[0]))] if response else []
+                [v for _, v in sorted(response.items(), key=lambda x: int(x[0]))] if response else []
 
             if not files:
                 raise ValueError("Nội dung không tồn tại")
@@ -57,10 +63,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     media_group.append(media_class(item['file_id']))
 
             if media_group:
-                await update.message.reply_media_group(
-                    media=media_group,
-                    protect_content=True
-                )
+                await send_media_in_batches(update.effective_chat.id, media_group, context)
 
             await update.message.reply_text(f"📌 Bí danh: <code>{alias}</code>", parse_mode="HTML")
 
@@ -68,31 +71,33 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"❌ Lỗi: {str(e)}")
         return
 
-    # Nếu không có alias, chỉ chào và hiện nút
     keyboard = [
-        [InlineKeyboardButton("🔗 Link 1", url="https://t.me/your_channel_1")],
-        [InlineKeyboardButton("🔗 Link 2", url="https://t.me/your_channel_2")]
+        [InlineKeyboardButton("📂 Mở kho ảnh", url="https://t.me/yourchannel")],
+        [InlineKeyboardButton("🌐 Truy cập website", url="https://yourwebsite.com")]
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("👋 Xin chào! Mời bạn chọn một liên kết bên dưới:", reply_markup=reply_markup)
+    await update.message.reply_text(
+        "👋 Xin chào! Hãy nhấn vào các nút bên dưới để xem nội dung.",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 async def newpost(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user_sessions[user_id] = []
-    posting_status[user_id] = True
-    # Lệnh ẩn, không phản hồi gì
+    await update.message.reply_text("📤 Gửi nội dung (ảnh/video/file/text) và nhấn /done khi xong")
 
 async def handle_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    is_posting = posting_status.get(user_id, False)
 
-    if not is_posting:
+    # Nếu người dùng chưa dùng /newpost thì không cho lưu
+    if user_id not in user_sessions:
         keyboard = [
-            [InlineKeyboardButton("🔗 Link 1", url="https://t.me/your_channel_1")],
-            [InlineKeyboardButton("🔗 Link 2", url="https://t.me/your_channel_2")]
+            [InlineKeyboardButton("📂 Mở kho ảnh", url="https://t.me/yourchannel")],
+            [InlineKeyboardButton("🌐 Truy cập website", url="https://yourwebsite.com")]
         ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text("👋 Xin chào! Mời bạn chọn một liên kết bên dưới:", reply_markup=reply_markup)
+        await update.message.reply_text(
+            "👋 Xin chào! Hãy nhấn vào các nút bên dưới để xem nội dung.",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
         return
 
     if update.message.media_group_id:
@@ -137,7 +142,6 @@ async def process_media_group(mgid: str, user_id: int):
 async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     session = user_sessions.pop(user_id, None)
-    posting_status.pop(user_id, None)
 
     if not session:
         await update.message.reply_text("❌ Chưa có nội dung")
@@ -166,7 +170,7 @@ def run_bot():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("done", done))
-    app.add_handler(CommandHandler("newpost", newpost))  # Lệnh ẩn
+    app.add_handler(CommandHandler("newpost", newpost))  # lệnh ẩn
     app.add_handler(MessageHandler(filters.ALL, handle_content))
     print("🤖 Bot đang hoạt động...")
     app.run_polling()
