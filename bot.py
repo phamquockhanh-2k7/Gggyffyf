@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 nest_asyncio.apply()
 
-# CẤU HÌNH BOT (THAY BẰNG THÔNG TIN THẬT CỦA BẠN)
+# CẤU HÌNH BOT (THAY BẰNG THÔNG TIN THẬT)
 BOT_TOKEN = "8064426886:AAE5Zr980N-8LhGgnXGqUXwqlPthvdKA9H0"
 API_CONFIG = {
     "vuotlink": {
@@ -39,32 +39,26 @@ user_modes = {}
 
 # --------------------- CORE FUNCTIONS ---------------------
 async def shorten_url(url: str) -> Tuple[str, str]:
-    """Rút gọn URL bằng cả 2 dịch vụ với cơ chế retry"""
+    """Rút gọn URL bằng cả 2 dịch vụ"""
     async def _shorten(service: str) -> str:
-        for _ in range(2):  # Thử tối đa 2 lần
-            try:
-                config = API_CONFIG[service]
-                params = {
-                    "api": config["api_key"],
-                    "url": quote(url, safe=''),
-                    "format": "text"
-                }
-                response = requests.get(config["api_url"], params=params, timeout=10)
-                
-                if response.status_code == 200 and response.text.strip() and response.text.strip() != url:
-                    return response.text.strip()
-            except Exception as e:
-                logger.warning(f"Lỗi {service}: {str(e)}")
-                await asyncio.sleep(1)
+        try:
+            config = API_CONFIG[service]
+            params = {
+                "api": config["api_key"],
+                "url": quote(url, safe=''),
+                "format": "text"
+            }
+            response = requests.get(config["api_url"], params=params, timeout=10)
+            if response.status_code == 200 and response.text.strip() and response.text.strip() != url:
+                return response.text.strip()
+        except Exception as e:
+            logger.warning(f"Lỗi {service}: {str(e)}")
         return url
 
-    # Chạy song song cả 2 dịch vụ
     vuotlink, mualink = await asyncio.gather(
         _shorten("vuotlink"),
         _shorten("mualink")
     )
-    
-    logger.info(f"Rút gọn thành công: V={vuotlink}, M={mualink}")
     return vuotlink, mualink
 
 async def format_caption(text: str) -> str:
@@ -75,24 +69,21 @@ async def format_caption(text: str) -> str:
     async def _process(match):
         url = match.group(0)
         vlink, mlink = await shorten_url(url)
-        return (
-            f"\n<b>• VUOTLINK:</b> {vlink}"
-            f"\n<b>• MUALINK:</b> {mlink}"
-        )
-    
-    # Xử lý tất cả link trong text
+        return f"\n<b>• VUOTLINK:</b> {vlink}\n<b>• MUALINK:</b> {mlink}"
+
+    # SỬA LỖI CHÍNH Ở ĐÂY: Đóng ngoặc đúng cách
     pattern = re.compile(r'https?://[^\s]+')
-    result = await asyncio.to_thread(pattern.sub, lambda m: asyncio.run_coroutine_threadsafe(_process(m), text)
+    result = await asyncio.to_thread(
+        lambda: pattern.sub(lambda m: asyncio.run(_process(m)), text)
     
     return f"{result}\n\n<b>🔗 Đã rút gọn tự động</b>"
 
 # --------------------- HANDLERS ---------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🛠 <b>Bot rút gọn link đa dịch vụ</b>\n\n"
-        "• Gửi link trực tiếp hoặc bài viết có chứa link\n"
-        "• Tự động rút gọn bằng <b>VuotLink</b> và <b>MuaLink</b>\n\n"
-        "⚙️ <i>/help để xem hướng dẫn</i>",
+        "🤖 <b>Bot rút gọn link đa dịch vụ</b>\n\n"
+        "Gửi link hoặc bài viết có chứa link để tự động rút gọn bằng:\n"
+        "• <b>VuotLink</b>\n• <b>MuaLink</b>",
         parse_mode="HTML"
     )
 
@@ -108,8 +99,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"🌐 <b>Link gốc:</b> {url}\n\n"
             f"🔗 <b>VUOTLINK:</b> {vlink}\n"
-            f"🔗 <b>MUALINK:</b> {mlink}\n\n"
-            "✅ <i>Đã rút gọn tự động</i>",
+            f"🔗 <b>MUALINK:</b> {mlink}",
             parse_mode="HTML",
             disable_web_page_preview=True
         )
