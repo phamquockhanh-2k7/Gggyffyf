@@ -19,10 +19,8 @@ logger = logging.getLogger(__name__)
 
 nest_asyncio.apply()
 
-# CẤU HÌNH BOT TOKEN (THAY THẾ BẰNG TOKEN THẬT CỦA BẠN)
-BOT_TOKEN = "8064426886:AAE5Zr980N-8LhGgnXGqUXwqlPthvdKA9H0"  # 👈 Thay thế bằng token thực của bạn
-
-# Cấu hình API
+# CẤU HÌNH BOT (THAY BẰNG THÔNG TIN THẬT CỦA BẠN)
+BOT_TOKEN = "8064426886:AAE5Zr980N-8LhGgnXGqUXwqlPthvdKA9H0"  # 👈 Thay bằng token thật
 API_CONFIG = {
     "vuotlink": {
         "api_key": "5d2e33c19847dea76f4fdb49695fd81aa669af86",
@@ -41,37 +39,66 @@ user_modes = {}
 
 # --------------------- CORE FUNCTIONS ---------------------
 def shorten_link(url: str, service: str) -> str:
+    """Rút gọn link với xử lý riêng cho từng dịch vụ"""
     try:
         config = API_CONFIG.get(service)
         if not config:
+            logger.error(f"Service {service} not configured")
             return url
 
+        # Chuẩn bị params chung
         params = {
             "api": config["api_key"],
             "url": quote(url, safe=''),
-            "format": "text"
+            "format": "text"  # Bắt buộc cho cả 2 dịch vụ
         }
 
         response = requests.get(
             config["api_url"],
             params=params,
-            timeout=10
+            timeout=15
         )
         
+        # Debug
+        logger.info(f"{service} API call: {response.url}")
+        logger.info(f"Response: {response.status_code} - {response.text}")
+
         if response.status_code == 200:
-            return response.text.strip() or url
+            result = response.text.strip()
+            
+            # Xử lý đặc biệt cho MuaLink
+            if service == "mualink":
+                if not result:  # Trường hợp trả về trống
+                    logger.warning("MuaLink returned empty response")
+                    return url
+                elif result == url:  # Trường hợp không rút gọn được
+                    logger.warning("MuaLink returned original URL")
+                    return url
+                    
+            return result
         return url
 
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error shortening with {service}: {str(e)}")
         return url
 
 def shorten_all_links(url: str) -> Tuple[str, str]:
-    return (
-        shorten_link(url, "vuotlink"),
-        shorten_link(url, "mualink")
-    )
+    """Rút gọn bằng cả 2 dịch vụ và kiểm tra kết quả"""
+    logger.info(f"Shortening URL: {url}")
+    
+    vuotlink = shorten_link(url, "vuotlink")
+    mualink = shorten_link(url, "mualink")
+    
+    # Kiểm tra chất lượng kết quả
+    if vuotlink == url:
+        logger.warning("VuotLink failed to shorten")
+    if mualink == url:
+        logger.warning("MuaLink failed to shorten")
+    
+    return vuotlink, mualink
 
 async def format_text_with_dual_links(text: str) -> str:
+    """Định dạng văn bản với cả 2 phiên bản rút gọn"""
     if not text:
         return ""
     
@@ -89,7 +116,11 @@ async def format_text_with_dual_links(text: str) -> str:
         return " ".join(processed_words)
     
     lines = [process_line(line) for line in text.splitlines() if line.strip()]
-    footer = "\n\n<b>📢 Rút gọn tự động bằng 2 dịch vụ</b>"
+    
+    footer = (
+        "\n\n<b>📢 Thông báo:</b> Đã rút gọn bằng 2 dịch vụ độc lập\n"
+        "<b>⚠️ Hỗ trợ:</b> @nothinginthissss"
+    )
     return "\n".join(lines) + footer
 
 # --------------------- HANDLERS ---------------------
@@ -106,7 +137,7 @@ async def set_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🆓 Chế độ gốc", callback_data="mode_free")]
     ]
     await update.message.reply_text(
-        "CHỌN CHẾ ĐỀ:",
+        "CHỌN CHẾ ĐỘ:",
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
@@ -137,7 +168,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"🔗 <b>Gốc:</b> {url}\n\n"
             f"📌 <b>VUOTLINK:</b> {vlink}\n"
-            f"📌 <b>MUALINK:</b> {mlink}\n\n"
+            f"📌 <b>MUALINK:</b> {mlink if mlink != url else '❌ Lỗi'}\n\n"
             "⚠️ Đã rút gọn tự động",
             parse_mode="HTML",
             disable_web_page_preview=True
