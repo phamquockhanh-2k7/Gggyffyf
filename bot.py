@@ -11,8 +11,8 @@ nest_asyncio.apply()
 BOT_TOKEN = "8064426886:AAE5Zr980N-8LhGgnXGqUXwqlPthvdKA9H0"
 API_KEY = "5d2e33c19847dea76f4fdb49695fd81aa669af86"
 API_URL = "https://vuotlink.vip/api"
-API_KEY_two = "f65ee4fd9659f8ee84ad31cd1c8dd011307cbed0"
-API_URL_two = "https://mualink.vip/api"
+API_KEY_2 = "f65ee4fd9659f8ee84ad31cd1c8dd011307cbed0"
+API_URL_2 = "https://mualink.vip/api"
 
 bot = Bot(token=BOT_TOKEN)
 media_groups = {}
