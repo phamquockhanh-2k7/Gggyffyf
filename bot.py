@@ -1,12 +1,6 @@
 import requests
-from telegram import (
-    Bot, Update, InputMediaPhoto, InputMediaVideo,
-    InlineKeyboardButton, InlineKeyboardMarkup
-)
-from telegram.ext import (
-    Application, MessageHandler, CommandHandler, CallbackQueryHandler,
-    ContextTypes, filters
-)
+from telegram import Bot, Update, InputMediaPhoto, InputMediaVideo, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 import asyncio
 import nest_asyncio
 import random
@@ -48,6 +42,28 @@ def shorten_link2(url: str) -> str:
     params = {"api": API_KEY2, "url": url, "format": "text"}
     response = requests.get(API_URL2, params=params)
     return response.text.strip() if response.status_code == 200 else url
+
+# Hàm xử lý rút gọn link và trả về cả hai link
+async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    mode = user_modes.get(user_id, "shorten")  # Chế độ mặc định là shorten
+
+    if update.message.text.startswith("http"):
+        url = update.message.text.strip()
+
+        # Lấy link rút gọn từ cả 2 dịch vụ
+        short_link = shorten_link(url)  # Link chính (vuotlink.vip)
+        short_link2 = shorten_link2(url)  # Link dự phòng (mualink.vip)
+
+        message = (
+            f"🔗 <b>Link gốc:</b> <s>{url}</s>\n"
+            f"🔍 <b>Link rút gọn (Vuotlink):</b> {short_link}\n"
+            f"🔍 <b>Link rút gọn (Mualink):</b> {short_link2}\n\n"
+            '⚠️<b>Kênh xem không cần vượt :</b> <a href="https://t.me/sachkhongchuu/299">ấn vào đây</a>'
+        )
+
+        # Gửi cả hai link rút gọn
+        await update.message.reply_text(message, parse_mode="HTML")
 
 # Hàm định dạng văn bản
 async def format_text(text: str) -> str:
@@ -133,8 +149,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message = (
             "📢 <b>Bạn có link rút gọn mới</b>\n"
             f"🔗 <b>Link gốc:</b> <s>{update.message.text}</s>\n"
-            f"🔍 <b>Link rút gọn:</b> {short_link}\n\n"
-            f"🔍 <b>Link rút gọn 2:</b> {short_link2}\n\n"
+            f"🔍 <b>Link rút gọn (Vuotlink):</b> {short_link}\n\n"
+            f"🔍 <b>Link rút gọn (Mualink):</b> {short_link2}\n\n"
             '⚠️<b>Kênh xem không cần vượt :</b> <a href="https://t.me/sachkhongchuu/299">ấn vào đây</a>'
         )
         await update.message.reply_text(message, parse_mode="HTML")
@@ -177,10 +193,9 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("setmode", set_mode))
     app.add_handler(CallbackQueryHandler(handle_callback))
-    app.add_handler(MessageHandler(filters.TEXT | filters.PHOTO | filters.VIDEO | filters.FORWARDED, handle_message))
+    app.add_handler(MessageHandler(filters.TEXT | filters.PHOTO | filters.VIDEO, handle_message))
 
-    print("✅ Bot đang chạy trên Koyeb...")
-    app.run_polling(close_loop=False)
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
