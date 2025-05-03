@@ -11,6 +11,9 @@ VUOTLINK_API_URL = "https://vuotlink.vip/api"
 MUALINK_API_KEY = "f65ee4fd9659f8ee84ad31cd1c8dd011307cbed0"
 VUOTLINK_API_KEY = "5d2e33c19847dea76f4fdb49695fd81aa669af86"  # Thay bằng API Key của bạn
 
+# API Token của bot Telegram
+BOT_TOKEN = "8064426886:AAFAWxoIKjiyTGG_DxcXFXDUizHZyANldE4"  # Thay bằng token của bạn
+
 # Các danh sách cần thiết cho việc xác thực và lưu trữ dữ liệu
 authenticated_users = set()  # Lưu trữ các user_id đã xác thực
 user_modes = {}  # Lưu trữ chế độ người dùng (shorten hoặc khác)
@@ -116,7 +119,7 @@ async def send_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Thiết lập và chạy bot
 def main():
-    application = Application.builder().token("8064426886:AAFAWxoIKjiyTGG_DxcXFXDUizHZyANldE4").build()  # Bot token ở đây
+    application = Application.builder().token(BOT_TOKEN).build()  # Sử dụng token bot từ biến
 
     # Các command handler
     application.add_handler(CommandHandler("setmode", set_mode))
