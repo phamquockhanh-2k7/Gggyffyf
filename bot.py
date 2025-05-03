@@ -9,7 +9,7 @@ VUOTLINK_API_URL = "https://vuotlink.vip/api"
 
 # API Key (thay đổi giá trị này theo nhu cầu)
 MUALINK_API_KEY = "f65ee4fd9659f8ee84ad31cd1c8dd011307cbed0"
-VUOTLINK_API_KEY = "f65ee4fd9659f8ee84ad31cd1c8dd011307cbed0"  # Thay bằng API Key của bạn
+VUOTLINK_API_KEY = "5d2e33c19847dea76f4fdb49695fd81aa669af86"  # Thay bằng API Key của bạn
 
 # Rút gọn link với mualink.vip
 async def shorten_link_mualink(url: str) -> str:
