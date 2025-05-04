@@ -28,21 +28,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     args = context.args
 
-    # Lưu ID người dùng vào Firebase nếu chưa tồn tại
+    # Kiểm tra người dùng có tồn tại trong hệ thống hay chưa, nếu chưa thì lưu vào
     user_url = f"{FIREBASE_URL}/users/{user_id}.json"
     user_data = requests.get(user_url).json()
 
     if not user_data:
-        # Nếu ID chưa có trong Firebase, tạo mới
         requests.put(user_url, json={})
 
     if args:
         try:
             alias = args[0]
-            response = requests.get(f"{FIREBASE_URL}/shared/{alias}.json").json()
+            response = requests.get(f"{FIREBASE_URL}/{alias}.json").json()
 
             files = response if isinstance(response, list) else \
-                      [v for _,v in sorted(response.items(), key=lambda x: int(x[0]))] if response else []
+                      [v for _, v in sorted(response.items(), key=lambda x: int(x[0]))] if response else []
 
             if not files:
                 raise ValueError("Nội dung không tồn tại")
@@ -150,16 +149,10 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         alias = generate_alias()
-
-        # Lưu nội dung vào "shared" với bí danh
-        response = requests.put(f"{FIREBASE_URL}/shared/{alias}.json", json=session)
+        response = requests.put(f"{FIREBASE_URL}/{alias}.json", json=session)
 
         if response.status_code != 200:
             raise ConnectionError("Lỗi kết nối Firebase")
-
-        # Lưu ID người dùng vào "users"
-        user_url = f"{FIREBASE_URL}/users/{user_id}/file/{alias}.json"
-        requests.put(user_url, json={"file_id": alias, "type": "shared"})
 
         bot_username = (await context.bot.get_me()).username
         await update.message.reply_text(
@@ -172,13 +165,30 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Lỗi hệ thống: {str(e)}")
 
+# Lệnh kiểm tra số lượng người dùng trong Firebase
+async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        # Lấy tất cả người dùng từ Firebase
+        response = requests.get(f"{FIREBASE_URL}/users.json").json()
+        
+        # Nếu có người dùng, trả về số lượng người dùng
+        if response:
+            user_count = len(response)
+            await update.message.reply_text(f"🧑‍💻 Số lượng người dùng đã lưu: {user_count}")
+        else:
+            await update.message.reply_text("🚫 Không có người dùng nào.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Lỗi khi lấy dữ liệu người dùng: {str(e)}")
+
 def run_bot():
     Thread(target=web_server.run, kwargs={'host':'0.0.0.0','port':PORT}).start()
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = Application.builder().token(BOT_TOKEN).read_timeout(60).write_timeout(60).build()
 
+    # Thêm CommandHandler cho các lệnh
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("done", done))
     app.add_handler(CommandHandler("newpost", newpost))  # lệnh ẩn không gợi ý
+    app.add_handler(CommandHandler("check", check))  # Lệnh kiểm tra số lượng người dùng
     app.add_handler(MessageHandler(filters.ALL, handle_content))
 
     print("🤖 Bot đang hoạt động...")
