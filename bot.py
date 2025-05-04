@@ -4,7 +4,7 @@ import requests
 import asyncio
 from flask import Flask, request
 from threading import Thread
-from telegram import Update, InputMediaPhoto, InputMediaVideo, InputMediaDocument, InlineKeyboardMarkup, InlineKeyboardButton, Bot
+from telegram import Update, InputMediaPhoto, InputMediaVideo, InlineKeyboardMarkup, InlineKeyboardButton, Bot
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
 # Cấu hình
@@ -96,8 +96,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     media_class = {
                         'photo': InputMediaPhoto,
-                        'video': InputMediaVideo,
-                        'document': InputMediaDocument
+                        'video': InputMediaVideo
                     }[item['type']]
                     media_group.append(media_class(item['file_id']))
 
@@ -134,7 +133,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def newpost(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_sessions[user_id] = []
-    await update.message.reply_text("📤 Gửi nội dung (ảnh/video/file/text) và nhấn /done khi xong")
+    await update.message.reply_text("📤 Gửi nội dung (ảnh/video) và nhấn /done khi xong")
 
 # Xử lý nội dung người dùng gửi
 async def handle_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -155,8 +154,6 @@ async def handle_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if update.message.text:
         content = {'type': 'text', 'file_id': update.message.text}
-    elif update.message.document:
-        content = {'type': 'document', 'file_id': update.message.document.file_id}
     elif update.message.photo:
         content = {'type': 'photo', 'file_id': update.message.photo[-1].file_id}
     elif update.message.video:
@@ -252,9 +249,10 @@ def run_bot():
     application.add_handler(CommandHandler("check", check))
     application.add_handler(CommandHandler("done", done))
     application.add_handler(CommandHandler("newpost", newpost))  # Đã bổ sung lệnh newpost
-    application.add_handler(MessageHandler(filters.TEXT | filters.PHOTO | filters.DOCUMENT | filters.VIDEO, handle_content))
+    application.add_handler(MessageHandler(filters.TEXT | filters.PHOTO | filters.VIDEO, handle_content))
 
     application.run_polling()
 
-if __name__ == "__main__":
+# Chạy bot
+if __name__ == '__main__':
     run_bot()
