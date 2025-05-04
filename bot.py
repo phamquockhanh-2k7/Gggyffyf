@@ -2,33 +2,51 @@ import random
 import string
 import requests
 import asyncio
-from flask import Flask
-from threading import Thread
+from flask import Flask, request
 from telegram import Update, InputMediaPhoto, InputMediaVideo, InputMediaDocument, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters, Dispatcher, Bot
 
 # Cấu hình
 BOT_TOKEN = "7728975615:AAEsj_3faSR_97j4-GW_oYnOy1uYhNuuJP0"
 FIREBASE_URL = "https://bot-telegram-99852-default-rtdb.firebaseio.com"
 PORT = 8000  # Port bắt buộc cho Koyeb
+WEBHOOK_URL = "https://bewildered-wenda-happyboy2k777-413cd6df.koyeb.app/webhook"  # URL webhook
 
 # Khởi tạo Flask
 web_server = Flask(__name__)
 user_sessions = {}
 media_groups = {}
 
+# Khởi tạo bot và dispatcher
+bot = Bot(BOT_TOKEN)
+dispatcher = Dispatcher(bot, update_queue=None, workers=0, use_context=True)
+
 @web_server.route('/')
 def home():
     return "🟢 Bot đang hoạt động"
 
-def generate_alias():
+# Webhook handler
+@web_server.route('/webhook', methods=['POST'])
+def webhook():
+    json_str = request.get_data().decode('UTF-8')
+    update = Update.de_json(json_str, bot)
+    dispatcher.process_update(update)
+    return 'OK'
+
+# Thiết lập webhook
+async def set_webhook():
+    try:
+        await bot.set_webhook(WEBHOOK_URL)
+        print("Webhook set successfully.")
+    except Exception as e:
+        print(f"Error setting webhook: {e}")
+
+async def generate_alias():
     return ''.join(random.choices(string.ascii_letters + string.digits, k=12))
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     args = context.args
-
-    # Kiểm tra người dùng có tồn tại trong hệ thống hay chưa, nếu chưa thì lưu vào
     user_url = f"{FIREBASE_URL}/users/{user_id}.json"
     user_data = requests.get(user_url).json()
 
@@ -39,7 +57,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             alias = args[0]
             response = requests.get(f"{FIREBASE_URL}/{alias}.json").json()
-
             files = response if isinstance(response, list) else \
                       [v for _, v in sorted(response.items(), key=lambda x: int(x[0]))] if response else []
 
@@ -60,7 +77,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     }[item['type']]
                     media_group.append(media_class(item['file_id']))
 
-            # Gửi text nếu có
             for text in text_list:
                 await update.message.reply_text(
                     text=text,
@@ -68,7 +84,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     disable_web_page_preview=True
                 )
 
-            # Gửi media theo nhóm 10
             for i in range(0, len(media_group), 10):
                 await update.message.reply_media_group(
                     media=media_group[i:i+10],
@@ -82,7 +97,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"❌ Lỗi: {str(e)}")
         return
 
-    # Nếu không có alias
     keyboard = InlineKeyboardMarkup([[
         InlineKeyboardButton("📤 Tạo bài viết mới", callback_data="newpost"),
         InlineKeyboardButton("🌐 Truy cập bot", url="https://t.me/filebotstorage_bot")
@@ -147,7 +161,7 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        alias = generate_alias()
+        alias = await generate_alias()
         response = requests.put(f"{FIREBASE_URL}/{alias}.json", json=session)
 
         if response.status_code != 200:
@@ -164,13 +178,10 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Lỗi hệ thống: {str(e)}")
 
-# Lệnh kiểm tra số lượng người dùng trong Firebase
 async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        # Lấy tất cả người dùng từ Firebase
         response = requests.get(f"{FIREBASE_URL}/users.json").json()
         
-        # Nếu có người dùng, trả về số lượng người dùng
         if response:
             user_count = len(response)
             await update.message.reply_text(f"🧑‍💻 Số lượng người dùng đã lưu: {user_count}")
@@ -180,18 +191,8 @@ async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Lỗi khi lấy dữ liệu người dùng: {str(e)}")
 
 def run_bot():
-    Thread(target=web_server.run, kwargs={'host':'0.0.0.0','port':PORT}).start()
-    app = Application.builder().token(BOT_TOKEN).read_timeout(60).write_timeout(60).build()
-
-    # Thêm CommandHandler cho các lệnh
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("done", done))
-    app.add_handler(CommandHandler("newpost", newpost))  # lệnh ẩn không gợi ý
-    app.add_handler(CommandHandler("check", check))  # Lệnh kiểm tra số lượng người dùng
-    app.add_handler(MessageHandler(filters.ALL, handle_content))
-
-    print("🤖 Bot đang hoạt động...")
-    app.run_polling()
+    asyncio.run(set_webhook())  # Đặt webhook
+    web_server.run(host='0.0.0.0', port=PORT)  # Flask chạy trên Koyeb
 
 if __name__ == '__main__':
     run_bot()
