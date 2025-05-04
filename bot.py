@@ -121,7 +121,6 @@ async def handle_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if content:
         user_sessions[user_id].append(content)
-        await update.message.reply_text("✅ Đã lưu. Tiếp tục hoặc /done")
 
 async def process_media_group(mgid: str, user_id: int):
     await asyncio.sleep(2)
