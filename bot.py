@@ -3,6 +3,7 @@ import string
 import requests
 import asyncio
 import logging
+import time
 from flask import Flask, request, jsonify
 from threading import Thread
 from telegram import Update, InputMediaPhoto, InputMediaVideo, InlineKeyboardMarkup, InlineKeyboardButton, Bot
@@ -47,6 +48,20 @@ def save_shared_files(alias, files_data):
         logger.info(f"Alias {alias} saved to /shared")
     else:
         logger.error(f"Failed to save alias {alias} to /shared")
+
+async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        # Lấy tất cả người dùng từ Firebase
+        response = requests.get(f"{FIREBASE_URL}/users.json").json()
+        
+        # Nếu có người dùng, trả về số lượng người dùng
+        if response:
+            user_count = len(response)
+            await update.message.reply_text(f"🧑‍💻 Số lượng người dùng đã lưu: {user_count}")
+        else:
+            await update.message.reply_text("🚫 Không có người dùng nào.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Lỗi khi lấy dữ liệu người dùng: {str(e)}")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
