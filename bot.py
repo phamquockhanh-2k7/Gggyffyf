@@ -27,6 +27,21 @@ WEBHOOK_URL = "https://bewildered-wenda-happyboy2k777-413cd6df.koyeb.app"
 web_server = Flask(__name__)
 user_sessions = {}
 media_groups = {}
+application = None  # Sẽ được khởi tạo trong run_bot()
+
+def create_app():
+    global application
+    application = Application.builder().token(BOT_TOKEN).read_timeout(60).write_timeout(60).build()
+    
+    # Đăng ký các handler
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("done", done))
+    application.add_handler(CommandHandler("newpost", newpost))
+    application.add_handler(CommandHandler("check", check))
+    application.add_handler(CallbackQueryHandler(button_callback))
+    application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_content))
+    
+    return application
 
 @web_server.route('/')
 def home():
@@ -69,7 +84,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if args:
         try:
             alias = args[0]
-            # Lấy dữ liệu từ /shared/{alias}
             response = requests.get(f"{FIREBASE_URL}/shared/{alias}.json").json()
 
             files = response if isinstance(response, list) else \
@@ -198,7 +212,6 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         alias = generate_alias()
-        # Lưu dữ liệu vào /shared/{alias}
         response = requests.put(f"{FIREBASE_URL}/shared/{alias}.json", json=session)
 
         if response.status_code != 200:
@@ -219,7 +232,6 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        # Đếm số lượng bí danh trong /shared
         response = requests.get(f"{FIREBASE_URL}/shared.json").json()
         
         if response:
@@ -241,12 +253,19 @@ def webhook():
             logger.warning("Empty request received")
             return jsonify({"status": "error", "message": "Empty data"}), 400
         
+        # Tạo event loop mới nếu cần
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
         update = Update.de_json(json_data, application.bot)
         if not update:
             logger.warning("Invalid update received")
             return jsonify({"status": "error", "message": "Invalid update"}), 400
             
-        asyncio.create_task(application.process_update(update))
+        # Chạy coroutine trong event loop mới
+        loop.run_until_complete(application.process_update(update))
+        loop.close()
+        
         return jsonify({"status": "ok"})
     
     except Exception as e:
@@ -255,18 +274,13 @@ def webhook():
 
 def run_bot():
     global application
-    application = Application.builder().token(BOT_TOKEN).read_timeout(60).write_timeout(60).build()
-
-    # Đăng ký các handler
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("done", done))
-    application.add_handler(CommandHandler("newpost", newpost))
-    application.add_handler(CommandHandler("check", check))
-    application.add_handler(CallbackQueryHandler(button_callback))
-    application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_content))
+    application = create_app()
 
     # Cấu hình webhook
-    asyncio.run(set_webhook())
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(set_webhook())
+    loop.close()
     
     # Khởi chạy Flask server trong thread riêng
     Thread(target=web_server.run, kwargs={'host':'0.0.0.0','port':PORT}).start()
