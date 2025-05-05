@@ -3,13 +3,21 @@ import string
 import requests
 import asyncio
 import time
+import logging
 from flask import Flask, request, jsonify
 from threading import Thread
 from telegram import Update, InputMediaPhoto, InputMediaVideo, InputMediaDocument, InlineKeyboardMarkup, InlineKeyboardButton, Bot
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters, CallbackQueryHandler
 from telegram.error import TelegramError
 
-# Cấu hình
+# Cấu hình logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+# Cấu hình ứng dụng
 BOT_TOKEN = "7728975615:AAEsj_3faSR_97j4-GW_oYnOy1uYhNuuJP0"
 FIREBASE_URL = "https://bot-telegram-99852-default-rtdb.firebaseio.com"
 PORT = 8000
@@ -32,9 +40,9 @@ async def set_webhook():
     webhook_url = f"{WEBHOOK_URL}/{BOT_TOKEN}"
     try:
         await bot.set_webhook(webhook_url)
-        print("Webhook đã được cấu hình thành công")
+        logger.info("Webhook configured successfully")
     except TelegramError as e:
-        print(f"Không thể cấu hình webhook: {str(e)}")
+        logger.error(f"Failed to set webhook: {str(e)}")
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -54,7 +62,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not user_data:
             requests.put(user_url, json={"joined_at": int(time.time())})
     except requests.RequestException as e:
-        print(f"Lỗi Firebase: {str(e)}")
+        logger.error(f"Firebase error: {str(e)}")
         await update.message.reply_text("❌ Lỗi hệ thống, vui lòng thử lại sau")
         return
 
@@ -95,7 +103,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         disable_web_page_preview=True
                     )
                 except TelegramError as e:
-                    print(f"Lỗi gửi tin nhắn: {str(e)}")
+                    logger.error(f"Failed to send message: {str(e)}")
 
             # Gửi media
             for i in range(0, len(media_group), 10):
@@ -107,11 +115,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                     await asyncio.sleep(1)
                 except TelegramError as e:
-                    print(f"Lỗi gửi media group: {str(e)}")
+                    logger.error(f"Failed to send media group: {str(e)}")
 
             await update.message.reply_text(f"📌 Bí danh: <code>{alias}</code>", parse_mode="HTML")
 
         except Exception as e:
+            logger.error(f"Error processing alias: {str(e)}")
             await update.message.reply_text(f"❌ Lỗi: {str(e)}")
         return
 
@@ -134,7 +143,7 @@ async def newpost(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id=No
             text="📤 Gửi nội dung (ảnh/video/file/text) và nhấn /done khi xong"
         )
     except TelegramError as e:
-        print(f"Lỗi gửi tin nhắn: {str(e)}")
+        logger.error(f"Failed to send message: {str(e)}")
 
 async def handle_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -202,8 +211,10 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📌 Bí danh: <code>{alias}</code>",
             parse_mode="HTML"
         )
+        logger.info(f"New post created with alias: {alias}")
 
     except Exception as e:
+        logger.error(f"Failed to save post: {str(e)}")
         await update.message.reply_text(f"❌ Lỗi hệ thống: {str(e)}")
 
 async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -217,19 +228,36 @@ async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text("🚫 Không có bí danh nào.")
     except Exception as e:
+        logger.error(f"Failed to check aliases: {str(e)}")
         await update.message.reply_text(f"❌ Lỗi khi lấy dữ liệu: {str(e)}")
 
 @web_server.route(f"/{BOT_TOKEN}", methods=['POST'])
 def webhook():
-    json_str = request.get_data().decode('UTF-8')
-    update = Update.de_json(json_str, Bot(token=BOT_TOKEN))
-    asyncio.create_task(application.process_update(update))
-    return jsonify({"status": "ok"})
+    try:
+        json_data = request.get_json()
+        logger.info(f"Received update: {json_data}")
+        
+        if not json_data:
+            logger.warning("Empty request received")
+            return jsonify({"status": "error", "message": "Empty data"}), 400
+        
+        update = Update.de_json(json_data, application.bot)
+        if not update:
+            logger.warning("Invalid update received")
+            return jsonify({"status": "error", "message": "Invalid update"}), 400
+            
+        asyncio.create_task(application.process_update(update))
+        return jsonify({"status": "ok"})
+    
+    except Exception as e:
+        logger.error(f"Webhook error: {str(e)}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 def run_bot():
     global application
     application = Application.builder().token(BOT_TOKEN).read_timeout(60).write_timeout(60).build()
 
+    # Đăng ký các handler
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("done", done))
     application.add_handler(CommandHandler("newpost", newpost))
@@ -237,10 +265,13 @@ def run_bot():
     application.add_handler(CallbackQueryHandler(button_callback))
     application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_content))
 
+    # Cấu hình webhook
     asyncio.run(set_webhook())
+    
+    # Khởi chạy Flask server trong thread riêng
     Thread(target=web_server.run, kwargs={'host':'0.0.0.0','port':PORT}).start()
 
-    print("🤖 Bot đang hoạt động với Webhook...")
+    logger.info("🤖 Bot is running with webhook...")
     application.run_polling()
 
 if __name__ == '__main__':
