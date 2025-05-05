@@ -195,7 +195,7 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"✅ Tạo thành công!\n"
             f"🔗 Link: https://t.me/{bot_username}?start={alias}\n"
-            f"📌 Bí danh: <code>{alias}</code>",
+            f"📌 Bí danh: <code>t.me/upbaiviet_bot?start={alias}</code>",
             parse_mode="HTML"
         )
 
