@@ -4,7 +4,7 @@ from telegram.ext import Application, MessageHandler, CommandHandler, filters, C
 import asyncio
 import nest_asyncio
 import random
-from keep_alive import keep_alive
+from keep_alive import keep_alive  # Nếu không dùng Koyeb có thể bỏ dòng này
 
 # Cho phép nest_asyncio để tránh xung đột vòng lặp
 nest_asyncio.apply()
@@ -87,6 +87,7 @@ async def shorten_link(update: Update, context: CallbackContext):
     if not update.message or update.effective_chat.type != "private":
         return
 
+    # 📦 Media group
     if update.message.media_group_id:
         mgid = update.message.media_group_id
         if mgid not in media_groups:
@@ -95,6 +96,7 @@ async def shorten_link(update: Update, context: CallbackContext):
         media_groups[mgid].append(update.message)
         return
 
+    # 🔗 Link đơn
     if update.message.text and update.message.text.startswith("http"):
         params = {"api": API_KEY, "url": update.message.text.strip(), "format": "text"}
         response = requests.get(API_URL, params=params)
@@ -109,24 +111,22 @@ async def shorten_link(update: Update, context: CallbackContext):
             await update.message.reply_text(message, parse_mode="HTML")
         return
 
-    if update.message.forward_origin:
+    # 📷 Ảnh hoặc video đơn
+    if update.message.photo or update.message.video:
         caption = update.message.caption or ""
         new_caption = await format_text(caption)
-        await update.message.copy(chat_id=update.effective_chat.id, caption=new_caption, parse_mode="HTML")
+        try:
+            await update.message.copy(chat_id=update.effective_chat.id, caption=new_caption, parse_mode="HTML")
+        except Exception as e:
+            print(f"Lỗi khi copy media đơn: {e}")
+        return
 
 def main():
-    # 1) Giữ bot luôn "sống" qua Flask
-    keep_alive()
-
-    # 2) Khởi tạo và đăng ký handlers
+    keep_alive()  # Có thể bỏ nếu chạy local
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, shorten_link))
-    app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.FORWARDED, shorten_link))
-
+    app.add_handler(MessageHandler(filters.ALL, shorten_link))  # Bắt mọi loại tin nhắn
     print("✅ Bot đang chạy...")
-
-    # 3) Bắt đầu polling, không đóng loop khi kết thúc
     app.run_polling(close_loop=False)
 
 if __name__ == "__main__":
