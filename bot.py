@@ -4,7 +4,7 @@ from telegram.ext import Application, MessageHandler, CommandHandler, filters, C
 import asyncio
 import nest_asyncio
 import random
-from keep_alive import keep_alive  # Nếu không dùng Koyeb có thể bỏ dòng này
+from keep_alive import keep_alive
 
 # Cho phép nest_asyncio để tránh xung đột vòng lặp
 nest_asyncio.apply()
@@ -87,7 +87,7 @@ async def shorten_link(update: Update, context: CallbackContext):
     if not update.message or update.effective_chat.type != "private":
         return
 
-    # 📦 Media group
+    # Xử lý media group
     if update.message.media_group_id:
         mgid = update.message.media_group_id
         if mgid not in media_groups:
@@ -96,7 +96,24 @@ async def shorten_link(update: Update, context: CallbackContext):
         media_groups[mgid].append(update.message)
         return
 
-    # 🔗 Link đơn
+    # Xử lý ảnh/video đơn lẻ
+    if update.message.photo or update.message.video:
+        caption = update.message.caption or ""
+        new_caption = await format_text(caption)
+
+        try:
+            if update.message.photo:
+                file_id = update.message.photo[-1].file_id
+                await bot.send_photo(chat_id=update.effective_chat.id, photo=file_id, caption=new_caption, parse_mode="HTML")
+            elif update.message.video:
+                file_id = update.message.video.file_id
+                await bot.send_video(chat_id=update.effective_chat.id, video=file_id, caption=new_caption, parse_mode="HTML")
+        except Exception as e:
+            print(f"Lỗi khi gửi ảnh/video đơn lẻ: {e}")
+            await bot.send_message(chat_id=update.effective_chat.id, text="⚠️ Gửi bài viết thất bại.")
+        return
+
+    # Xử lý link
     if update.message.text and update.message.text.startswith("http"):
         params = {"api": API_KEY, "url": update.message.text.strip(), "format": "text"}
         response = requests.get(API_URL, params=params)
@@ -111,21 +128,21 @@ async def shorten_link(update: Update, context: CallbackContext):
             await update.message.reply_text(message, parse_mode="HTML")
         return
 
-    # 📷 Ảnh hoặc video đơn
-    if update.message.photo or update.message.video:
+    # Xử lý bài chuyển tiếp có caption
+    if update.message.forward_origin:
         caption = update.message.caption or ""
         new_caption = await format_text(caption)
-        try:
-            await update.message.copy(chat_id=update.effective_chat.id, caption=new_caption, parse_mode="HTML")
-        except Exception as e:
-            print(f"Lỗi khi copy media đơn: {e}")
-        return
+        await update.message.copy(chat_id=update.effective_chat.id, caption=new_caption, parse_mode="HTML")
 
 def main():
-    keep_alive()  # Có thể bỏ nếu chạy local
+    # Giữ bot hoạt động
+    keep_alive()
+
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.ALL, shorten_link))  # Bắt mọi loại tin nhắn
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, shorten_link))
+    app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.FORWARDED, shorten_link))
+
     print("✅ Bot đang chạy...")
     app.run_polling(close_loop=False)
 
