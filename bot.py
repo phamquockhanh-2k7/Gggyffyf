@@ -59,7 +59,7 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
         
     except Exception as e:
         print(f"Lỗi kiểm tra kênh: {e}")
-        await update.message.reply_text("⚠️ Hệ thống đang bảo trì, vui lòng thử lại sau!")
+        await update.message.reply_text("⚠️ Chết mẹ bot lỗi rồi, nhờ bạn báo cho admin @nothinginthissss (admin sẽ free cho bạn 1 link, cảm ơn bạn)")
         return False
 
 # /start handler
@@ -101,7 +101,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             await update.message.reply_text("🔒 Lỗi kết nối database")
     else:
-        await update.message.reply_text("📥 Gửi /newlink để bắt đầu tạo liên kết lưu trữ nội dung.")
+        await update.message.reply_text("📥 Gửi lệnh để bắt đầu tạo liên kết lưu trữ nội dung. Nếu bạn muốn sử dụng miễn phí hãy liên hệ @nothinginthissss để được cấp quyền")
 
 # /newlink handler
 async def newlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -153,7 +153,7 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_alias.pop(user_id, None)
 
     if not files or not alias:
-        await update.message.reply_text("❌ Bạn chưa bắt đầu bằng /newlink hoặc chưa gửi nội dung.")
+        await update.message.reply_text("❌ Bạn chưa bắt đầu bằng link hoặc chưa gửi nội dung.")
         return
 
     url = f"{FIREBASE_URL}/{alias}.json"
@@ -167,9 +167,9 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📦 Tổng số nội dung: {len(files)} (Ảnh/Video/Text)"
             )
         else:
-            await update.message.reply_text("❌ Lỗi khi lưu dữ liệu, vui lòng thử lại.")
+            await update.message.reply_text("❌ Có vẻ link này bị lỗi, báo lỗi cho @nothinginthissss")
     except Exception:
-        await update.message.reply_text("🔒 Lỗi kết nối database")
+        await update.message.reply_text("🔒Nếu bạn chưa thấy video, báo ngay cho admin @nothinginthissss để được hỗ trợ nhé, cảm ơn bạn!")
 
 # /sigmaboy on/off
 async def sigmaboy(update: Update, context: ContextTypes.DEFAULT_TYPE):
