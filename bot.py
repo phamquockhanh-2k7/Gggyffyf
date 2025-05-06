@@ -6,12 +6,13 @@ from datetime import datetime
 from threading import Lock
 import requests
 from flask import Flask
-from telegram import Update, InputMediaPhoto, InputMediaVideo
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram import Update, InputMediaPhoto, InputMediaVideo, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters, CallbackQueryHandler
 
 # Config
 BOT_TOKEN = "7728975615:AAEsj_3faSR_97j4-GW_oYnOy1uYhNuuJP0"
 FIREBASE_URL = "https://bot-telegram-99852-default-rtdb.firebaseio.com/shared"
+CHANNEL_ID = "@YourChannelID"  # ID của kênh cần kiểm tra tham gia
 
 # Thread-safe storage
 user_files = {}
@@ -32,38 +33,45 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     protect = user_protection.get(user_id, True)  # Mặc định bật bảo vệ
 
-    args = context.args
-    if args:
-        alias = args[0]
-        url = f"{FIREBASE_URL}/{alias}.json"
+    # Tạo các nút inline
+    keyboard = [
+        [
+            InlineKeyboardButton("Kiểm tra tham gia kênh", callback_data='check_channel')
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
 
-        try:
-            res = await asyncio.to_thread(requests.get, url)
-            if res.status_code == 200 and res.json():
-                media_items = res.json()
-                media_group = []
-                text_content = []
+    # Kiểm tra người dùng có tham gia kênh hay không
+    await update.message.reply_text(
+        "Chào bạn! Bạn có thể kiểm tra xem mình đã tham gia kênh hay chưa.",
+        reply_markup=reply_markup
+    )
 
-                for item in media_items:
-                    if item["type"] == "photo":
-                        media_group.append(InputMediaPhoto(item["file_id"]))
-                    elif item["type"] == "video":
-                        media_group.append(InputMediaVideo(item["file_id"]))
-                    elif item["type"] == "text":
-                        text_content.append(item["file_id"])
+# Hàm kiểm tra người dùng đã tham gia kênh hay chưa
+async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
 
-                if text_content:
-                    await update.message.reply_text("\n\n".join(text_content), protect_content=protect)
+    try:
+        # Kiểm tra trạng thái thành viên của người dùng
+        member = await context.bot.get_chat_member(CHANNEL_ID, user_id)
 
-                for i in range(0, len(media_group), 10):
-                    await update.message.reply_media_group(media_group[i:i+10], protect_content=protect)
-                    await asyncio.sleep(0.5)
-            else:
-                await update.message.reply_text("❌ Không tìm thấy dữ liệu với mã này.")
-        except Exception:
-            await update.message.reply_text("🔒 Lỗi kết nối database")
-    else:
-        await update.message.reply_text("📥 Gửi /newlink để bắt đầu tạo liên kết lưu trữ nội dung.")
+        # Nếu người dùng là thành viên
+        if member.status in ['member', 'administrator', 'creator']:
+            await update.message.reply_text("✅ Bạn đã tham gia kênh!")
+        else:
+            await update.message.reply_text("❌ Bạn chưa tham gia kênh.")
+    
+    except Exception as e:
+        await update.message.reply_text("🔒 Lỗi khi kiểm tra tham gia kênh.")
+        print(e)
+
+# Xử lý callback từ các nút inline
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()  # Đảm bảo xử lý nút inline
+
+    if query.data == 'check_channel':
+        await check_membership(update, context)
 
 # /newlink handler
 async def newlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -163,6 +171,7 @@ def run_bot():
     app.add_handler(CommandHandler("done", done))
     app.add_handler(CommandHandler("sigmaboy", sigmaboy))
     app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | (filters.TEXT & ~filters.COMMAND), handle_message))
+    app.add_handler(CallbackQueryHandler(button))  # Thêm handler để xử lý callback từ nút inline
     app.run_polling()
 
 # Chạy cả bot và web server
