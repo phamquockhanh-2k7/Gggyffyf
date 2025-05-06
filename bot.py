@@ -12,7 +12,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, ContextTyp
 # Config
 BOT_TOKEN = "7728975615:AAEsj_3faSR_97j4-GW_oYnOy1uYhNuuJP0"
 FIREBASE_URL = "https://bot-telegram-99852-default-rtdb.firebaseio.com/shared"
-CHANNEL_USERNAME = "@hoahocduong_vip"  # Kênh cần kiểm tra
+CHANNEL_USERNAME = "@hoahocduong_vip"  # Đổi thành username kênh thực tế
 
 # Thread-safe storage
 user_files = {}
@@ -29,35 +29,38 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
     try:
         user = update.effective_user
         if not user:
-            return True
-        
-        # Kiểm tra trạng thái thành viên
+            return False
+            
+        # Kiểm tra thành viên kênh
         member = await context.bot.get_chat_member(CHANNEL_USERNAME, user.id)
         if member.status in ['member', 'administrator', 'creator']:
             return True
 
-        # Tạo link xác nhận phù hợp
+        # Tạo link xác nhận động
         start_args = context.args
-        if update.message and update.message.text and update.message.text.startswith('/start') and start_args:
-            alias = start_args[0]
-            confirm_link = f"https://t.me/{context.bot.username}?start={alias}"
+        if update.message and update.message.text.startswith('/start') and start_args:
+            confirm_link = f"https://t.me/{context.bot.username}?start={start_args[0]}"
         else:
             confirm_link = f"https://t.me/{context.bot.username}?start=start"
 
         # Tạo nút bấm
         keyboard = [
-            [InlineKeyboardButton("👉 THAM GIA KÊNH 👈", url=f"https://t.me/{CHANNEL_USERNAME[1:]}")],
-            [InlineKeyboardButton("✅ ĐÃ THAM GIA", url=confirm_link)]
+            [InlineKeyboardButton("🔥 THAM GIA KÊNH NGAY", url=f"https://t.me/{CHANNEL_USERNAME[1:]}")],
+            [InlineKeyboardButton("🔓 XÁC NHẬN ĐÃ THAM GIA", url=confirm_link)]
         ]
         
         await update.message.reply_text(
-            "🚫 Bạn cần tham gia kênh @hoahocduong_vip trước khi sử dụng bot!",
+            "📛 BẠN PHẢI THAM GIA KÊNH TRƯỚC KHI SỬ DỤNG BOT!\n"
+            f"👉 Kênh yêu cầu: {CHANNEL_USERNAME}\n"
+            "✅ Sau khi tham gia, nhấn nút XÁC NHẬN để tiếp tục",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return False
+        
     except Exception as e:
-        print(f"Lỗi khi kiểm tra kênh: {e}")
-        return True
+        print(f"Lỗi kiểm tra kênh: {e}")
+        await update.message.reply_text("⚠️ Hệ thống đang bảo trì, vui lòng thử lại sau!")
+        return False
 
 # /start handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -158,7 +161,7 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         response = await asyncio.to_thread(requests.put, url, json=files)
         if response.status_code == 200:
-            link = f"https://t.me/filebotstorage_bot?start={alias}"
+            link = f"https://t.me/ugufjk_bot?start={alias}"
             await update.message.reply_text(
                 f"✅ Đã lưu thành công!\n🔗 Link truy cập: {link}\n"
                 f"📦 Tổng số nội dung: {len(files)} (Ảnh/Video/Text)"
