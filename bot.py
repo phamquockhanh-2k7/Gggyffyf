@@ -23,6 +23,7 @@ def generate_alias(length=7):
     random_part = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(length))
     return date_prefix + random_part
 
+# /start handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
         return
@@ -53,15 +54,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 for i in range(0, len(media_group), 10):
                     await update.message.reply_media_group(media_group[i:i+10])
                     await asyncio.sleep(0.5)
-
             else:
                 await update.message.reply_text("❌ Không tìm thấy dữ liệu với mã này.")
         except Exception:
             await update.message.reply_text("🔒 Lỗi kết nối database")
-
     else:
-        await update.message.reply_text("📥 Gửi ảnh, video hoặc text cho mình. Khi xong thì nhắn /done để lưu và lấy link.")
+        await update.message.reply_text("📥 Gửi /newlink để bắt đầu tạo liên kết lưu trữ nội dung.")
 
+# /newlink handler
+async def newlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message:
+        return
+
+    user_id = update.message.from_user.id
+    with data_lock:
+        user_files[user_id] = []
+        user_alias[user_id] = generate_alias()
+    await update.message.reply_text("✅ Bây giờ bạn có thể gửi ảnh, video hoặc text. Khi xong hãy nhắn /done để tạo link.")
+
+# handle ảnh/video/text
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
         return
@@ -70,8 +81,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     with data_lock:
         if user_id not in user_files:
-            user_files[user_id] = []
-            user_alias[user_id] = generate_alias()
+            return  # Chưa gọi /newlink thì bỏ qua
 
     if update.message.photo:
         file_id = update.message.photo[-1].file_id
@@ -88,8 +98,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with data_lock:
         if entry not in user_files[user_id]:
             user_files[user_id].append(entry)
-            await update.message.reply_text("✅ Đã lưu tạm!")
 
+# /done handler
 async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
         return
@@ -99,13 +109,11 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with data_lock:
         files = user_files.get(user_id, [])
         alias = user_alias.get(user_id)
-        if user_id in user_files:
-            del user_files[user_id]
-        if user_id in user_alias:
-            del user_alias[user_id]
+        user_files.pop(user_id, None)
+        user_alias.pop(user_id, None)
 
     if not files or not alias:
-        await update.message.reply_text("❌ Bạn chưa gửi nội dung nào.")
+        await update.message.reply_text("❌ Bạn chưa bắt đầu bằng /newlink hoặc chưa gửi nội dung.")
         return
 
     url = f"{FIREBASE_URL}/{alias}.json"
@@ -123,7 +131,7 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         await update.message.reply_text("🔒 Lỗi kết nối database")
 
-# Flask app
+# Flask web server
 app_web = Flask(__name__)
 
 @app_web.route('/')
@@ -133,13 +141,16 @@ def home():
 def run_web():
     app_web.run(host="0.0.0.0", port=8000)
 
+# Chạy bot Telegram
 def run_bot():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("newlink", newlink))
     app.add_handler(CommandHandler("done", done))
     app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | (filters.TEXT & ~filters.COMMAND), handle_message))
     app.run_polling()
 
+# Chạy cả bot và web server
 if __name__ == '__main__':
     threading.Thread(target=run_web).start()
     run_bot()
