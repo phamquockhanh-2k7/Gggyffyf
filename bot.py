@@ -17,6 +17,7 @@ FIREBASE_URL = "https://bot-telegram-99852-default-rtdb.firebaseio.com/shared"
 user_files = {}
 user_alias = {}
 data_lock = Lock()
+user_locked = {}
 
 def generate_alias(length=7):
     date_prefix = datetime.now().strftime("%d%m%Y")  # VD: 06022025
@@ -27,41 +28,9 @@ def generate_alias(length=7):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
         return
+    await update.message.reply_text("👋 Xin chào! Hãy gửi ảnh, video hoặc văn bản để bắt đầu.")
 
-    args = context.args
-    if args:
-        alias = args[0]
-        url = f"{FIREBASE_URL}/{alias}.json"
-
-        try:
-            res = await asyncio.to_thread(requests.get, url)
-            if res.status_code == 200 and res.json():
-                media_items = res.json()
-                media_group = []
-                text_content = []
-
-                for item in media_items:
-                    if item["type"] == "photo":
-                        media_group.append(InputMediaPhoto(item["file_id"]))
-                    elif item["type"] == "video":
-                        media_group.append(InputMediaVideo(item["file_id"]))
-                    elif item["type"] == "text":
-                        text_content.append(item["file_id"])
-
-                if text_content:
-                    await update.message.reply_text("\n\n".join(text_content))
-
-                for i in range(0, len(media_group), 10):
-                    await update.message.reply_media_group(media_group[i:i+10])
-                    await asyncio.sleep(0.5)
-            else:
-                await update.message.reply_text("❌ Không tìm thấy dữ liệu với mã này.")
-        except Exception:
-            await update.message.reply_text("🔒 Lỗi kết nối database")
-    else:
-        await update.message.reply_text("📥 Gửi /newlink để bắt đầu tạo liên kết lưu trữ nội dung.")
-
-# /newlink handler
+# /newlink handler - không thông báo cho người dùng
 async def newlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
         return
@@ -70,7 +39,7 @@ async def newlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with data_lock:
         user_files[user_id] = []
         user_alias[user_id] = generate_alias()
-    await update.message.reply_text("✅ Bây giờ bạn có thể gửi ảnh, video hoặc text. Khi xong hãy nhắn /done để tạo link.")
+    # Không thông báo gì cho người dùng sau khi nhập /newlink
 
 # handle ảnh/video/text
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -131,6 +100,20 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         await update.message.reply_text("🔒 Lỗi kết nối database")
 
+# /unlock2703 handler - mở khóa tính năng lưu
+async def unlock(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message:
+        return
+
+    user_id = update.message.from_user.id
+    password = "2703"
+    
+    if " ".join(context.args) == password:
+        user_locked[user_id] = False
+        await update.message.reply_text("✅ Tính năng lưu nội dung đã được mở khóa!")
+    else:
+        await update.message.reply_text("❌ Mật khẩu không đúng!")
+
 # Flask web server
 app_web = Flask(__name__)
 
@@ -147,6 +130,7 @@ def run_bot():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("newlink", newlink))
     app.add_handler(CommandHandler("done", done))
+    app.add_handler(CommandHandler("unlock2703", unlock))  # Thêm lệnh mở khóa
     app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | (filters.TEXT & ~filters.COMMAND), handle_message))
     app.run_polling()
 
