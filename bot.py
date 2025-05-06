@@ -12,95 +12,60 @@ from telegram.ext import Application, CommandHandler, MessageHandler, ContextTyp
 # Config
 BOT_TOKEN = "7728975615:AAEsj_3faSR_97j4-GW_oYnOy1uYhNuuJP0"
 FIREBASE_URL = "https://bot-telegram-99852-default-rtdb.firebaseio.com/shared"
-CHANNEL_USERNAME = "@hoahocduong_vip"  # Thay bằng username kênh thực tế
+CHANNEL_USERNAME = "@hoahocduong_vip"  # Kênh cần kiểm tra
 
 # Thread-safe storage
 user_files = {}
 user_alias = {}
-user_protection = {}  
+user_protection = {}  # user_id: True = bảo vệ, False = không bảo vệ
 data_lock = Lock()
 
-# Hàm kiểm tra thành viên
-async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    user = update.effective_user
-    if not user: return False
-    
-    try:
-        member = await context.bot.get_chat_member(CHANNEL_USERNAME, user.id)
-        if member.status in ['member', 'administrator', 'creator']:
-            return True
-    except Exception as e:
-        print(f"Lỗi kiểm tra thành viên: {e}")
-
-    # Tạo link xác nhận
-    alias = context.args[0] if (update.message and 
-                              update.message.text and 
-                              update.message.text.startswith('/start') and 
-                              context.args) else None
-    
-    start_link = (f"https://t.me/{context.bot.username}?start={alias}" 
-                 if alias else 
-                 f"https://t.me/{context.bot.username}?start=start")
-
-    # Tạo nút bấm
-    keyboard = [
-        [InlineKeyboardButton("Tham gia kênh", url=f"https://t.me/{CHANNEL_USERNAME[1:]}")],
-        [InlineKeyboardButton("Đã tham gia", url=start_link)]
-    ]
-    
-    await update.message.reply_text(
-        "📢 Vui lòng tham gia kênh trước khi sử dụng bot!",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-    return False
-
-# Các hàm xử lý cũ (thêm check membership ở đầu)
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not await check_channel_membership(update, context):
-        return
-    
-    user_id = update.message.from_user.id
-    protect = user_protection.get(user_id, True)
-
-    # Phần xử lý start gốc...
-
-async def newlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not await check_channel_membership(update, context):
-        return
-    
-    # Phần xử lý newlink gốc...
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not await check_channel_membership(update, context):
-        return
-    
-    # Phần xử lý message gốc...
-
-async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not await check_channel_membership(update, context):
-        return
-    
-    # Phần xử lý done gốc...
-
-async def sigmaboy(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not await check_channel_membership(update, context):
-        return
-    
-    # Phần xử lý sigmaboy gốc...
-
-# Phần còn lại giữ nguyên
 def generate_alias(length=7):
     date_prefix = datetime.now().strftime("%d%m%Y")
     random_part = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(length))
     return date_prefix + random_part
 
+async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        user = update.effective_user
+        if not user:
+            return True
+        
+        # Kiểm tra trạng thái thành viên
+        member = await context.bot.get_chat_member(CHANNEL_USERNAME, user.id)
+        if member.status in ['member', 'administrator', 'creator']:
+            return True
+
+        # Tạo link xác nhận phù hợp
+        start_args = context.args
+        if update.message and update.message.text and update.message.text.startswith('/start') and start_args:
+            alias = start_args[0]
+            confirm_link = f"https://t.me/{context.bot.username}?start={alias}"
+        else:
+            confirm_link = f"https://t.me/{context.bot.username}?start=start"
+
+        # Tạo nút bấm
+        keyboard = [
+            [InlineKeyboardButton("👉 THAM GIA KÊNH 👈", url=f"https://t.me/{CHANNEL_USERNAME[1:]}")],
+            [InlineKeyboardButton("✅ ĐÃ THAM GIA", url=confirm_link)]
+        ]
+        
+        await update.message.reply_text(
+            "🚫 Bạn cần tham gia kênh @hoahocduong_vip trước khi sử dụng bot!",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return False
+    except Exception as e:
+        print(f"Lỗi khi kiểm tra kênh: {e}")
+        return True
+
 # /start handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message:
+    if not update.message or not await check_channel_membership(update, context):
         return
 
     user_id = update.message.from_user.id
-    protect = user_protection.get(user_id, True)  # Mặc định bật bảo vệ
+    protect = user_protection.get(user_id, True)
 
     args = context.args
     if args:
@@ -137,7 +102,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # /newlink handler
 async def newlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message:
+    if not update.message or not await check_channel_membership(update, context):
         return
 
     user_id = update.message.from_user.id
@@ -148,7 +113,7 @@ async def newlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # handle ảnh/video/text
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message:
+    if not update.message or not await check_channel_membership(update, context):
         return
 
     user_id = update.message.from_user.id
@@ -174,7 +139,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # /done handler
 async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message:
+    if not update.message or not await check_channel_membership(update, context):
         return
 
     user_id = update.message.from_user.id
@@ -205,7 +170,7 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # /sigmaboy on/off
 async def sigmaboy(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message:
+    if not update.message or not await check_channel_membership(update, context):
         return
     user_id = update.message.from_user.id
     args = context.args
