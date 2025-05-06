@@ -12,12 +12,12 @@ from telegram.ext import Application, CommandHandler, MessageHandler, ContextTyp
 # Config
 BOT_TOKEN = "7728975615:AAEsj_3faSR_97j4-GW_oYnOy1uYhNuuJP0"
 FIREBASE_URL = "https://bot-telegram-99852-default-rtdb.firebaseio.com/shared"
-CHANNEL_USERNAME = "@hoahocduong_vip"  # Đổi thành username kênh thực tế
+CHANNEL_USERNAME = "@hoahocduong_vip"  # ĐỔI THÀNH USERNAME KÊNH THỰC TẾ
 
 # Thread-safe storage
 user_files = {}
 user_alias = {}
-user_protection = {}  # user_id: True = bảo vệ, False = không bảo vệ
+user_protection = {}  
 data_lock = Lock()
 
 def generate_alias(length=7):
@@ -31,36 +31,36 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
         if not user:
             return False
             
-        # Kiểm tra thành viên kênh
-        member = await context.bot.get_chat_member(CHANNEL_USERNAME, user.id)
-        if member.status in ['member', 'administrator', 'creator']:
-            return True
+        # Kiểm tra bot có quyền kiểm tra kênh không
+        try:
+            member = await context.bot.get_chat_member(CHANNEL_USERNAME, user.id)
+            if member.status in ['member', 'administrator', 'creator']:
+                return True
+        except Exception as channel_error:
+            print(f"Lỗi truy cập kênh: {channel_error}")
+            await update.message.reply_text("⚠️ Bot chưa được cấp quyền kiểm tra kênh!")
+            return False
 
-        # Tạo link xác nhận động
+        # Tạo link xác nhận
         start_args = context.args
-        if update.message and update.message.text.startswith('/start') and start_args:
-            confirm_link = f"https://t.me/{context.bot.username}?start={start_args[0]}"
-        else:
-            confirm_link = f"https://t.me/{context.bot.username}?start=start"
+        confirm_link = f"https://t.me/{context.bot.username}?start={start_args[0]}" if start_args else f"https://t.me/{context.bot.username}?start=start"
 
-        # Tạo nút bấm
         keyboard = [
-            [InlineKeyboardButton("🔥 THAM GIA KÊNH NGAY", url=f"https://t.me/{CHANNEL_USERNAME[1:]}")],
-            [InlineKeyboardButton("🔓 XÁC NHẬN ĐÃ THAM GIA", url=confirm_link)]
+            [InlineKeyboardButton("THAM GIA KÊNH", url=f"https://t.me/{CHANNEL_USERNAME[1:]}")],
+            [InlineKeyboardButton("XÁC NHẬN", url=confirm_link)]
         ]
         
         await update.message.reply_text(
-            "📛 BẠN PHẢI THAM GIA KÊNH TRƯỚC KHI SỬ DỤNG BOT!\n"
-            f"👉 Kênh yêu cầu: {CHANNEL_USERNAME}\n"
-            "✅ Sau khi tham gia, nhấn nút XÁC NHẬN để tiếp tục",
+            f"📢 Vui lòng tham gia kênh {CHANNEL_USERNAME} trước!",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return False
-        
+
     except Exception as e:
-        print(f"Lỗi kiểm tra kênh: {e}")
-        await update.message.reply_text("⚠️ Hệ thống đang bảo trì, vui lòng thử lại sau!")
+        print(f"Lỗi hệ thống: {e}")
+        await update.message.reply_text("🔧 Bot đang bảo trì, vui lòng thử lại sau!")
         return False
+
 
 # /start handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -183,7 +183,8 @@ async def sigmaboy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_protection[user_id] = True   # Bảo vệ
     await update.message.reply_text(".")  # Phản hồi ngầm
 
-# Flask web server
+
+# Flask và khởi chạy
 app_web = Flask(__name__)
 
 @app_web.route('/')
@@ -193,7 +194,6 @@ def home():
 def run_web():
     app_web.run(host="0.0.0.0", port=8000)
 
-# Chạy bot Telegram
 def run_bot():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
@@ -203,7 +203,6 @@ def run_bot():
     app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | (filters.TEXT & ~filters.COMMAND), handle_message))
     app.run_polling()
 
-# Chạy cả bot và web server
 if __name__ == '__main__':
     threading.Thread(target=run_web).start()
     run_bot()
