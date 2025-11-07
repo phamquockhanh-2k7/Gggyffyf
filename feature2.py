@@ -43,6 +43,7 @@ async def format_text(text: str) -> str:
     )
     return "\n".join(new_lines)
 
+
 async def process_media_group(media_group_id: str, user_chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     """Gửi lại nhóm media sau khi nhận đủ."""
     await asyncio.sleep(random.uniform(3, 5))
@@ -67,6 +68,7 @@ async def process_media_group(media_group_id: str, user_chat_id: int, context: C
 
     if media:
         await context.bot.send_media_group(chat_id=user_chat_id, media=media)
+
 
 async def handle_text_or_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Xử lý tin nhắn nếu feature2 đang bật."""
@@ -100,8 +102,19 @@ async def handle_text_or_media(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # Tin nhắn văn bản chứa link
     if msg.text and "http" in msg.text:
+        # Gửi phản hồi tạm
+        temp_msg = await msg.reply_text("🤖 Bot đã nhận được link của bạn.\nĐang rút gọn link trong 3 giây...")
+        await asyncio.sleep(3)
+
+        # Rút gọn + định dạng
         caption = await format_text(msg.text)
         await msg.reply_text(caption, parse_mode="HTML")
+
+        # Xóa tin nhắn phản hồi
+        try:
+            await temp_msg.delete()
+        except Exception:
+            pass
         return
 
     # Tin nhắn chuyển tiếp
@@ -109,17 +122,20 @@ async def handle_text_or_media(update: Update, context: ContextTypes.DEFAULT_TYP
         new_caption = await format_text(msg.caption or "")
         await msg.copy(chat_id=msg.chat_id, caption=new_caption, parse_mode="HTML")
 
+
 # Lệnh bật feature2
 async def apion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global feature2_enabled
     feature2_enabled = True
     await update.message.reply_text("✅ Đã bật tính năng 2 (rút link + định dạng nội dung).")
 
+
 # Lệnh tắt feature2
 async def apioff(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global feature2_enabled
     feature2_enabled = False
     await update.message.reply_text("🟡 Đã tắt tính năng 2, quay lại tính năng mặc định.")
+
 
 def register_feature2(app):
     """Đăng ký handler cho tính năng 2."""
