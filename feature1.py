@@ -117,7 +117,7 @@ async def newlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with data_lock:
         user_files[user_id] = []
         user_alias[user_id] = generate_alias()
-    await update.message.reply_text("✅ Bây giờ bạn có thể gửi ảnh, video để lưu trữ. Khi xong hãy nhắn /done để tạo link.")
+    await update.message.reply_text("✅ Bây giờ bạn có thể gửi ảnh, video để lưu trữ. Khi xong hãy nhắn /done để tạo link lưu trữ.")
 
 # handle ảnh/video/text
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
