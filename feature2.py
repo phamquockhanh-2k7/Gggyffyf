@@ -8,7 +8,7 @@ import random
 nest_asyncio.apply()
 
 # === THAY THẾ BẰNG GIÁ TRỊ THẬT ===
-BOT_TOKEN = "8064426886:AAE5Zr980N-8LhGgnXGqUXwqlPthvdKA9H0"  # Từ code cũ
+BOT_TOKEN = "7851783179:AAFu58Cs9w1Z7i-xU4pPhnISgg0Sq3vfaPs"  # Từ code cũ
 API_KEY = "5d2e33c19847dea76f4fdb49695fd81aa669af86"  # Từ code cũ
 API_URL = "https://vuotlink.vip/api"  # Từ code cũ
 
