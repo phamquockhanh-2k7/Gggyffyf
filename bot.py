@@ -12,8 +12,9 @@ def run_bot():
     app = Application.builder().token(BOT_TOKEN).build()
 
     # Đăng ký feature chính
-    register_feature1(app)
     register_feature2(app)
+    register_feature1(app)
+    
 
     print("🤖 Bot is running...")
     app.run_polling()
