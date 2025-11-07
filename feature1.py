@@ -105,7 +105,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("🔒 Lỗi kết nối database")
     else:
         await update.message.reply_text(
-            "📥 Gửi lệnh để bắt đầu tạo liên kết lưu trữ nội dung. Nếu bạn muốn sử dụng miễn phí hãy liên hệ admin."
+            "📥 Gửi lệnh /newlink để bắt đầu tạo liên kết lưu trữ nội dung."
         )
 
 # /newlink handler
@@ -117,7 +117,7 @@ async def newlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with data_lock:
         user_files[user_id] = []
         user_alias[user_id] = generate_alias()
-    await update.message.reply_text("✅ Bây giờ bạn có thể gửi ảnh, video hoặc text. Khi xong hãy nhắn /done để tạo link.")
+    await update.message.reply_text("✅ Bây giờ bạn có thể gửi ảnh, video để lưu trữ. Khi xong hãy nhắn /done để tạo link.")
 
 # handle ảnh/video/text
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
