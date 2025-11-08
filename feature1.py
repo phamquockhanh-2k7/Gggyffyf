@@ -1,4 +1,3 @@
-from feature2 import user_api_enabled  # Import state từ feature2
 import secrets
 import string
 import asyncio
@@ -126,6 +125,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user_id = update.message.from_user.id
+    # Import ở đây để tránh circular import
+    from feature2 import user_api_enabled
     # Skip nếu feature2 đang bật (để feature2 xử lý)
     if user_api_enabled.get(user_id, False):
         return
