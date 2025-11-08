@@ -71,6 +71,13 @@ async def process_media_group(media_group_id: str, user_chat_id: int, context: C
     if media:
         await context.bot.send_media_group(chat_id=user_chat_id, media=media)
 
+# Custom filter: Chỉ match nếu /api bật cho user
+def api_enabled_filter(update: Update) -> bool:
+    if not update.message:
+        return False
+    user_id = update.message.from_user.id
+    return user_api_enabled.get(user_id, False)
+
 # ====== Lệnh /api ======
 async def api_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not await check_channel_membership(update, context):
@@ -88,20 +95,18 @@ async def api_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         status = "bật" if user_api_enabled.get(user_id, False) else "tắt"
         await update.message.reply_text(f"📋 Trạng thái API: {status}\nNhắn /api on để bật, /api off để tắt.")
 
-# ... (code cũ, giữ nguyên phần import và hàm khác)
-
 # ====== Xử lý tin nhắn ======
 async def handle_api_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not await check_channel_membership(update, context):
-        return False  # Tiếp tục handler tiếp theo nếu không check được
+        return
 
     user_id = update.message.from_user.id
     if not user_api_enabled.get(user_id, False):
-        return False  # Tiếp tục handler tiếp theo nếu /api off
+        return
 
     chat_type = update.message.chat.type
     if chat_type != "private":
-        return False  # Tiếp tục handler tiếp theo nếu không private
+        return
 
     msg = update.message
     text = msg.text or msg.caption or ""
@@ -113,7 +118,7 @@ async def handle_api_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
             media_groups[mgid] = []
             asyncio.create_task(process_media_group(mgid, msg.chat_id, context))
         media_groups[mgid].append(msg)
-        return  # Dừng vì đã xử lý
+        return
 
     # === Ảnh hoặc video có caption ===
     if msg.caption and ("http" in msg.caption):
@@ -122,30 +127,28 @@ async def handle_api_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await msg.reply_photo(msg.photo[-1].file_id, caption=caption, parse_mode="HTML")
         elif msg.video:
             await msg.reply_video(msg.video.file_id, caption=caption, parse_mode="HTML")
-        return  # Dừng
+        return
 
     # === Tin nhắn text có link ===
     if msg.text and "http" in msg.text:
         caption = await format_text(msg.text)
         await msg.reply_text(caption, parse_mode="HTML")
-        return  # Dừng
+        return
 
     # === Tin nhắn forward ===
     if msg.forward_from or msg.forward_from_chat:
         caption = await format_text(msg.caption or "")
         await msg.copy(chat_id=msg.chat_id, caption=caption, parse_mode="HTML")
-        return  # Dừng
+        return
 
     # === Tin nhắn bình thường ===
     await msg.reply_text("📩 Bot đã nhận được tin nhắn của bạn.")
-    return  # Dừng
-
-# ... (code cũ, giữ nguyên register_feature2)
 
 # ====== Đăng ký vào app chính ======
 def register_feature2(app):
     app.add_handler(CommandHandler("api", api_command))
+    # Sử dụng custom filter thay vì filters tĩnh
     app.add_handler(MessageHandler(
-        (filters.TEXT | filters.PHOTO | filters.VIDEO | filters.FORWARDED) & ~filters.COMMAND,
+        api_enabled_filter & (filters.TEXT | filters.PHOTO | filters.VIDEO | filters.FORWARDED) & ~filters.COMMAND,
         handle_api_message
     ))
