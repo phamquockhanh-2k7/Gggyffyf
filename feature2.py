@@ -71,13 +71,6 @@ async def process_media_group(media_group_id: str, user_chat_id: int, context: C
     if media:
         await context.bot.send_media_group(chat_id=user_chat_id, media=media)
 
-# Custom filter: Chỉ match nếu /api bật cho user
-def api_enabled_filter(update: Update) -> bool:
-    if not update.message:
-        return False
-    user_id = update.message.from_user.id
-    return user_api_enabled.get(user_id, False)
-
 # ====== Lệnh /api ======
 async def api_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not await check_channel_membership(update, context):
@@ -102,7 +95,7 @@ async def handle_api_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     user_id = update.message.from_user.id
     if not user_api_enabled.get(user_id, False):
-        return
+        return  # Không xử lý nếu chưa bật
 
     chat_type = update.message.chat.type
     if chat_type != "private":
@@ -147,8 +140,7 @@ async def handle_api_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # ====== Đăng ký vào app chính ======
 def register_feature2(app):
     app.add_handler(CommandHandler("api", api_command))
-    # Fix: Sử dụng filters.create() cho custom filter
     app.add_handler(MessageHandler(
-        filters.create(api_enabled_filter) & (filters.TEXT | filters.PHOTO | filters.VIDEO | filters.FORWARDED) & ~filters.COMMAND,
+        (filters.TEXT | filters.PHOTO | filters.VIDEO | filters.FORWARDED) & ~filters.COMMAND,
         handle_api_message
     ))
