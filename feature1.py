@@ -125,11 +125,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user_id = update.message.from_user.id
-    # Import ở đây để tránh circular import
-    from feature2 import user_api_enabled
-    # Skip nếu feature2 đang bật (để feature2 xử lý)
-    if user_api_enabled.get(user_id, False):
-        return
     with data_lock:
         if user_id not in user_files:
             return
