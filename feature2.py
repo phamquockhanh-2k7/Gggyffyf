@@ -147,8 +147,8 @@ async def handle_api_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # ====== Đăng ký vào app chính ======
 def register_feature2(app):
     app.add_handler(CommandHandler("api", api_command))
-    # Sử dụng custom filter thay vì filters tĩnh
+    # Fix: Sử dụng filters.create() cho custom filter
     app.add_handler(MessageHandler(
-        api_enabled_filter & (filters.TEXT | filters.PHOTO | filters.VIDEO | filters.FORWARDED) & ~filters.COMMAND,
+        filters.create(api_enabled_filter) & (filters.TEXT | filters.PHOTO | filters.VIDEO | filters.FORWARDED) & ~filters.COMMAND,
         handle_api_message
     ))
