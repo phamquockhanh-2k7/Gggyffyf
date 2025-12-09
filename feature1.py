@@ -67,7 +67,12 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
 
 # /start handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not await check_channel_membership(update, context):
+    if not update.message:
+        return
+        
+    # 💥 THAY ĐỔI: Tách việc kiểm tra kênh ra khỏi logic return sớm.
+    is_member = await check_channel_membership(update, context)
+    if not is_member:
         return
 
     user_id = update.message.from_user.id
@@ -111,7 +116,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # /newlink handler
 async def newlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not await check_channel_membership(update, context):
+    if not update.message:
+        return
+    is_member = await check_channel_membership(update, context)
+    if not is_member:
         return
 
     user_id = update.message.from_user.id
@@ -132,8 +140,10 @@ def is_link_creation_mode(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # LƯU Ý: Không cần kiểm tra user_id in user_files nữa vì bộ lọc đã đảm bảo
     
-    if not update.message or not await check_channel_membership(update, context):
+    if not update.message:
         return
+    # Chỉ kiểm tra membership ở đây, không return nếu thất bại, vì lệnh này chỉ cần chạy khi đã kích hoạt
+    await check_channel_membership(update, context) 
 
     user_id = update.message.from_user.id
 
@@ -155,7 +165,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # /done handler
 async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not await check_channel_membership(update, context):
+    if not update.message:
+        return
+    is_member = await check_channel_membership(update, context)
+    if not is_member:
         return
 
     user_id = update.message.from_user.id
@@ -164,7 +177,6 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         alias = user_alias.pop(user_id, None)
 
     if not files or not alias:
-        # Trường hợp này có thể xảy ra nếu người dùng nhấn /done mà không /newlink, nhưng ít xảy ra với logic mới
         await update.message.reply_text("❌ Bạn chưa bắt đầu bằng link hoặc chưa gửi nội dung.")
         return
 
@@ -186,8 +198,12 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # /sigmaboy on/off
 async def sigmaboy(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not await check_channel_membership(update, context):
+    if not update.message:
         return
+    is_member = await check_channel_membership(update, context)
+    if not is_member:
+        return
+        
     user_id = update.message.from_user.id
     args = context.args
     if args and args[0].lower() == "on":
@@ -196,7 +212,7 @@ async def sigmaboy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_protection[user_id] = True   # Bảo vệ
     
     status = "Tắt bảo vệ (cho phép forward/save)" if not user_protection.get(user_id, True) else "Bật bảo vệ (ngăn forward/save)"
-    await update.message.reply_text(f"🔒 Trạng thái bảo vệ nội dung: **{status}**", parse_mode="Markdown")
+    await update.message.reply_text(f"🔒 Trạng thái bảo vệ nội dung: **{status}**\nNhấn /start để xem lại hướng dẫn.", parse_mode="Markdown")
 
 def register_feature1(app):
     app.add_handler(CommandHandler("start", start))
