@@ -5,7 +5,7 @@ import requests
 from datetime import datetime
 from threading import Lock
 from telegram import (
-    Update, InputMediaPhoto, InputMediaVideo, InlineKeyboardButton, InlineKeyboardMarkup, Message
+    Update, InputMediaPhoto, InputMediaVideo, InlineKeyboardButton, InlineKeyboardMarkup
 )
 from telegram.ext import (
     CommandHandler, MessageHandler, ContextTypes, filters
@@ -67,12 +67,7 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
 
 # /start handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message:
-        return
-        
-    # 💥 THAY ĐỔI: Tách việc kiểm tra kênh ra khỏi logic return sớm.
-    is_member = await check_channel_membership(update, context)
-    if not is_member:
+    if not update.message or not await check_channel_membership(update, context):
         return
 
     user_id = update.message.from_user.id
@@ -116,10 +111,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # /newlink handler
 async def newlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message:
-        return
-    is_member = await check_channel_membership(update, context)
-    if not is_member:
+    if not update.message or not await check_channel_membership(update, context):
         return
 
     user_id = update.message.from_user.id
@@ -128,24 +120,15 @@ async def newlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_alias[user_id] = generate_alias()
     await update.message.reply_text("✅ Bây giờ bạn có thể gửi ảnh, video để lưu trữ. Khi xong hãy nhắn /done để tạo link lưu trữ.")
 
-# 🆕 HÀM LỌC TÙY CHỈNH: Chỉ trả về True nếu người dùng đã gọi /newlink
-def is_link_creation_mode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    if not update.effective_user:
-        return False
-    user_id = update.effective_user.id
-    with data_lock:
-        return user_id in user_files
-
 # handle ảnh/video/text
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # LƯU Ý: Không cần kiểm tra user_id in user_files nữa vì bộ lọc đã đảm bảo
-    
-    if not update.message:
+    if not update.message or not await check_channel_membership(update, context):
         return
-    # Chỉ kiểm tra membership ở đây, không return nếu thất bại, vì lệnh này chỉ cần chạy khi đã kích hoạt
-    await check_channel_membership(update, context) 
 
     user_id = update.message.from_user.id
+    with data_lock:
+        if user_id not in user_files:
+            return
 
     if update.message.photo:
         file_id = update.message.photo[-1].file_id
@@ -165,16 +148,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # /done handler
 async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message:
-        return
-    is_member = await check_channel_membership(update, context)
-    if not is_member:
+    if not update.message or not await check_channel_membership(update, context):
         return
 
     user_id = update.message.from_user.id
     with data_lock:
-        files = user_files.pop(user_id, []) # Dùng pop để lấy và xóa cùng lúc
-        alias = user_alias.pop(user_id, None)
+        files = user_files.get(user_id, [])
+        alias = user_alias.get(user_id)
+        user_files.pop(user_id, None)
+        user_alias.pop(user_id, None)
 
     if not files or not alias:
         await update.message.reply_text("❌ Bạn chưa bắt đầu bằng link hoặc chưa gửi nội dung.")
@@ -198,32 +180,19 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # /sigmaboy on/off
 async def sigmaboy(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message:
+    if not update.message or not await check_channel_membership(update, context):
         return
-    is_member = await check_channel_membership(update, context)
-    if not is_member:
-        return
-        
     user_id = update.message.from_user.id
     args = context.args
     if args and args[0].lower() == "on":
         user_protection[user_id] = False  # Mở khóa
     elif args and args[0].lower() == "off":
         user_protection[user_id] = True   # Bảo vệ
-    
-    status = "Tắt bảo vệ (cho phép forward/save)" if not user_protection.get(user_id, True) else "Bật bảo vệ (ngăn forward/save)"
-    await update.message.reply_text(f"🔒 Trạng thái bảo vệ nội dung: **{status}**\nNhấn /start để xem lại hướng dẫn.", parse_mode="Markdown")
+    await update.message.reply_text(".")  # Phản hồi ngầm
 
 def register_feature1(app):
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("newlink", newlink))
     app.add_handler(CommandHandler("done", done))
     app.add_handler(CommandHandler("sigmaboy", sigmaboy))
-    
-    # 💥 Đăng ký Handler chỉ khi is_link_creation_mode là True
-    message_filter = filters.PHOTO | filters.VIDEO | (filters.TEXT & ~filters.COMMAND)
-    
-    app.add_handler(MessageHandler(
-        message_filter & is_link_creation_mode,
-        handle_message
-    ))
+    app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | (filters.TEXT & ~filters.COMMAND), handle_message))
