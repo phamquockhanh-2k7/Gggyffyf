@@ -1,7 +1,8 @@
 import requests
 import random
 import asyncio
-from telegram import Update, InputMediaPhoto, InputMediaVideo, ParseMode
+from telegram import Update, InputMediaPhoto, InputMediaVideo
+from telegram.constants import ParseMode # 💥 ĐÃ SỬA LỖI IMPORTERROR
 from telegram.ext import CommandHandler, MessageHandler, ContextTypes, filters
 from feature1 import check_channel_membership, user_files, data_lock # Import từ feature 1
 
@@ -192,12 +193,11 @@ async def handle_api_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
     # === Tin nhắn forward ===
     if msg.forward_from or msg.forward_from_chat:
         # Nếu là forward, ta chỉ format caption/text nếu có link, nếu không copy nguyên bản
-        formatted_caption = await format_text(msg.caption or msg.text or "")
+        text_to_format = msg.caption or msg.text or ""
         
-        # Nếu không có link nào được format (chỉ có các thẻ <b> và phần footer) 
-        # thì ta chỉ gửi phần footer, hoặc gửi thông báo.
-        if formatted_caption != (msg.caption or msg.text or ""):
-             await msg.copy(chat_id=msg.chat_id, caption=formatted_caption, parse_mode=ParseMode.HTML)
+        if "http" in text_to_format:
+            formatted_caption = await format_text(text_to_format)
+            await msg.copy(chat_id=msg.chat_id, caption=formatted_caption, parse_mode=ParseMode.HTML)
         else:
             await msg.reply_text("📩 Bot đã nhận được tin nhắn forward của bạn (Không có link để xử lý).")
         return
