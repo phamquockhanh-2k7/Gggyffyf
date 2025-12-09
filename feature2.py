@@ -119,7 +119,10 @@ async def process_media_group(media_group_id: str, user_chat_id: int, context: C
 
 # ====== Lệnh /api ======
 async def api_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not await check_channel_membership(update, context):
+    if not update.message:
+        return
+    is_member = await check_channel_membership(update, context)
+    if not is_member:
         return
 
     user_id = update.message.from_user.id
@@ -154,8 +157,11 @@ def is_api_mode_on(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
 async def handle_api_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # LƯU Ý: Bộ lọc is_api_mode_on đã đảm bảo tính năng được bật
     
-    if not update.message or not await check_channel_membership(update, context):
+    if not update.message:
         return
+        
+    # Kiểm tra membership, không return nếu thất bại, vì lệnh này chỉ cần chạy khi đã kích hoạt
+    await check_channel_membership(update, context) 
 
     # Khác với feature 1, feature 2 chỉ hoạt động trong chat Private
     chat_type = update.message.chat.type
