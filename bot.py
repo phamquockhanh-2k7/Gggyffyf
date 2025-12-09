@@ -11,7 +11,7 @@ BOT_TOKEN = "7851783179:AAFu58Cs9w1Z7i-xU4pPhnISgg0Sq3vfaPs"
 def run_bot():
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # Đăng ký feature chính
+    # Đăng ký feature chính (Thứ tự đăng ký quan trọng cho các handler trùng lặp)
     register_feature1(app)
     register_feature2(app)
     
