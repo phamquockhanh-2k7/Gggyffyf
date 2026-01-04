@@ -196,6 +196,6 @@ def register_feature1(app):
     app.add_handler(CommandHandler("newlink", newlink))
     app.add_handler(CommandHandler("done", done))
     app.add_handler(CommandHandler("sigmaboy", sigmaboy))
-    app.add_handler(CommandHandler("download", check_credits)) 
+    app.add_handler(CommandHandler("profile", check_credits)) 
     app.add_handler(CommandHandler("cheattogetdownload", cheat_credits))
     app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | (filters.TEXT & ~filters.COMMAND), handle_message), group=0)
