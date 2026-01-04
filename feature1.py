@@ -78,18 +78,43 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if args:
         command = args[0]
         
+        # --- LOGIC XỬ LÝ LINK REFERRAL ---
         if command.startswith("ref_"):
             referrer_id = command.split("_")[1]
+            
+            # Tạo sẵn bộ nút bấm (Bạn có thể thay đổi text và link ở đây)
+            keyboard = [
+                [InlineKeyboardButton("LINK FREE CHO BẠN :V ", url="https://t.me/upbaiviet_bot?start=0401202641jO9Rl")],
+                [InlineKeyboardButton("Thêm Link này nữa 😘", url="https://t.me/upbaiviet_robot?start=BQADAQADyRQAAly12EaVCMPUmDCWMhYE")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
             if existing_user_data is None:
                 if referrer_id != str(user_id):
                     await add_credit(referrer_id)
-                    await update.message.reply_text("🎉 Bạn đã giúp người giới thiệu có thêm 1 lượt tải!")
+                    # Trường hợp 1: Người mới giúp người mời thành công
+                    await update.message.reply_text(
+                        "🎉 Bạn đã giúp người giới thiệu có thêm 1 lượt tải!",
+                        reply_markup=reply_markup
+                    )
                 else:
-                    await update.message.reply_text("⚠️ Bạn không thể tự mời chính mình.")
+                    # Trường hợp 2: Tự mời chính mình
+                    await update.message.reply_text(
+                        "⚠️ Bạn không thể tự mời chính mình.",
+                        reply_markup=reply_markup
+                    )
             else:
-                await update.message.reply_text("👋 Bạn đã từng giúp rồi, Chào mừng bạn quay trở lại!")
+                # Trường hợp 3: Người cũ nhấn lại link ref
+                await update.message.reply_text(
+                    "👋 Bạn đã từng giúp rồi, Chào mừng bạn quay trở lại!",
+                    reply_markup=reply_markup
+                )
             
-            await update.message.reply_text(f"Bạn hiện đang có {current_credits} lượt lưu nội dung.")
+            # Tin nhắn hiển thị số dư lượt tải (cũng có thể kèm nút nếu bạn muốn)
+            await update.message.reply_text(
+                f"Bạn hiện đang có {current_credits} lượt lưu nội dung.",
+                reply_markup=reply_markup # Thêm vào đây nếu muốn dòng này cũng có nút
+            )
             return
 
         alias = command
