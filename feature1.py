@@ -89,7 +89,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     await update.message.reply_text("⚠️ Bạn không thể tự mời chính mình.")
             else:
-                await update.message.reply_text("👋 Chào mừng bạn quay trở lại!")
+                await update.message.reply_text("👋 Bạn đã từng giúp rồi, Chào mừng bạn quay trở lại!")
             
             await update.message.reply_text(f"Bạn hiện đang có {current_credits} lượt lưu nội dung.")
             return
