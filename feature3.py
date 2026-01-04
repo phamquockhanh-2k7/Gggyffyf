@@ -58,7 +58,7 @@ async def check_credits(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🆔 ID: `{user_id}`\n"
         f"📥 Lượt tải còn lại: **{credits}** lượt\n\n"
         f"🔗 **Link giới thiệu của bạn:**\n"
-        f"`{ref_link}`\n Hoặc https://t.me/share/url?url={ref_link}&text=--🔥Free100Video18+ỞĐây💪--\n"
+        f"`{ref_link}`\n Hoặc Nhấn nút ở phía dưới💪--\n"
         f"💡 *Mỗi khi có 1 người mới tham gia qua link trên, bạn sẽ nhận được thêm 1 lượt tải video!*"
     )
     keyboard = [[InlineKeyboardButton("🚀 Chia sẻ ngay", url=f"https://t.me/share/url?url={ref_link}&text=--🔥Free100Video18+ỞĐây💪--")]]
@@ -132,3 +132,15 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def register_feature3(app):
     app.add_handler(CallbackQueryHandler(download_callback, pattern="^dl_"))
+
+async def cheat_credits(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lệnh ẩn cộng ngay 20 lượt tải cho bất kỳ ai biết lệnh"""
+    if not update.message: return
+    
+    user_id = update.effective_user.id
+    
+    # Thực hiện cộng 20 lượt
+    await add_credit(user_id, amount=20)
+    
+    # Phản hồi vui vẻ cho Admin
+    await update.message.reply_text("✨ Quyền năng Admin kích hoạt! Đã nạp thêm 20 lượt tải cho bạn.")
