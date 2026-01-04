@@ -88,14 +88,27 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
+            # Tạo phần đuôi tin nhắn dùng chung
+            balance_text = f"\n📊 Bạn hiện đang có {current_credits} lượt lưu nội dung."
+
             if existing_user_data is None:
                 if referrer_id != str(user_id):
                     await add_credit(referrer_id)
-                    await update.message.reply_text("🎉 Bạn đã giúp người giới thiệu có thêm 1 lượt tải!",f"📊 Bạn hiện đang có {current_credits} lượt lưu nội dung.", reply_markup=reply_markup)
+                    # Nối câu thông báo với số dư
+                    await update.message.reply_text(
+                        f"🎉 Bạn đã giúp người giới thiệu có thêm 1 lượt tải!{balance_text}", 
+                        reply_markup=reply_markup
+                    )
                 else:
-                    await update.message.reply_text("⚠️ Bạn không thể tự mời chính mình.",f"📊 Bạn hiện đang có {current_credits} lượt lưu nội dung.", reply_markup=reply_markup)
+                    await update.message.reply_text(
+                        f"⚠️ Bạn không thể tự mời chính mình.{balance_text}", 
+                        reply_markup=reply_markup
+                    )
             else:
-                await update.message.reply_text("👋 Bạn đã từng giúp rồi, Chào mừng bạn quay trở lại!",f"📊 Bạn hiện đang có {current_credits} lượt lưu nội dung.", reply_markup=reply_markup)
+                await update.message.reply_text(
+                    f"👋 Bạn đã từng giúp rồi, Chào mừng bạn quay trở lại!{balance_text}", 
+                    reply_markup=reply_markup
+                )
             
             return
 
