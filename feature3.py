@@ -47,7 +47,7 @@ async def delete_msg_job(context: ContextTypes.DEFAULT_TYPE):
     except: pass
 
 async def check_credits(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Lệnh /download để kiểm tra số lượt tải và lấy link REF"""
+    """Lệnh /profile để kiểm tra số lượt tải và lấy link REF"""
     if not update.message: return
     user_id = update.effective_user.id
     credits = await init_user_if_new(user_id)
