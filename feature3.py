@@ -58,10 +58,10 @@ async def check_credits(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🆔 ID: `{user_id}`\n"
         f"📥 Lượt tải còn lại: **{credits}** lượt\n\n"
         f"🔗 **Link giới thiệu của bạn:**\n"
-        f"`{ref_link}`\n\n"
+        f"`{ref_link}`\n Hoặc https://t.me/share/url?url={ref_link}&text=--🔥Free100Video18+ỞĐây💪--\n"
         f"💡 *Mỗi khi có 1 người mới tham gia qua link trên, bạn sẽ nhận được thêm 1 lượt tải video!*"
     )
-    keyboard = [[InlineKeyboardButton("🚀 Chia sẻ ngay", url=f"https://t.me/share/url?url={ref_link}&text=Tham%20gia%20Bot%20để%20xem%20nội%20dung%20hấp%20dẫn!")]]
+    keyboard = [[InlineKeyboardButton("🚀 Chia sẻ ngay", url=f"https://t.me/share/url?url={ref_link}&text=--🔥Free100Video18+ỞĐây💪--")]]
     await update.message.reply_text(message_text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -120,7 +120,7 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # Cập nhật lại nút bấm ở tin nhắn cũ
                 keyboard = [
                     [InlineKeyboardButton(f"📥 Tải video (còn {new_credits} lượt)", callback_data=f"dl_{alias}")],
-                    [InlineKeyboardButton("🔗 Chia sẻ nhận thêm lượt", url=f"https://t.me/{context.bot.username}?start=ref_{user_id}")]
+                    [InlineKeyboardButton("🔗 Chia sẻ nhận thêm lượt", url=f"https://t.me/share/url?url={ref_link}&text=--🔥Free100Video18+ỞĐây💪--")]
                 ]
                 await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
         else:
