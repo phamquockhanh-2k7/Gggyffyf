@@ -48,7 +48,6 @@ async def delete_msg_job(context: ContextTypes.DEFAULT_TYPE):
 
 async def check_credits(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Lệnh /profile để kiểm tra số lượt tải và lấy link REF"""
-    # Xóa tin nhắn lệnh của người dùng
     try: await update.message.delete()
     except: pass
 
@@ -92,7 +91,6 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await query.answer(text="✅ Đang lấy dữ liệu bản lưu...")
 
-        # Truy xuất Firebase nhánh shared
         shared_url = f"{FIREBASE_URL}/shared/{alias}.json"
         res = await asyncio.to_thread(requests.get, shared_url)
         data = res.json()
@@ -100,23 +98,32 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if res.status_code == 200 and data:
             if await deduct_credit(user_id):
                 new_credits = credits - 1
-                media_group, text_content = [], []
+                media_group, text_content, docs_to_send = [], [], []
                 
                 for item in data:
-                    if item["type"] == "photo": media_group.append(InputMediaPhoto(item["file_id"]))
-                    elif item["type"] == "video": media_group.append(InputMediaVideo(item["file_id"]))
-                    elif item["type"] == "text": text_content.append(item["file_id"])
+                    f_id = item["file_id"]
+                    f_type = item["type"]
+                    if f_type == "photo": media_group.append(InputMediaPhoto(f_id))
+                    elif f_type == "video": media_group.append(InputMediaVideo(f_id))
+                    elif f_type == "text": text_content.append(f_id)
+                    elif f_type == "document": docs_to_send.append(f_id) # NHẬN DIỆN DOCUMENT
 
+                # 1. Gửi văn bản
                 if text_content:
                     await context.bot.send_message(chat_id=query.message.chat_id, text="\n\n".join(text_content))
                 
+                # 2. Gửi Album (Ảnh/Video)
                 if media_group:
                     for i in range(0, len(media_group), 10):
                         await context.bot.send_media_group(chat_id=query.message.chat_id, media=media_group[i:i+10])
                 
+                # 3. Gửi File (APK, ZIP, PDF...)
+                for doc_id in docs_to_send:
+                    await context.bot.send_document(chat_id=query.message.chat_id, document=doc_id)
+
                 await context.bot.send_message(chat_id=query.message.chat_id, text=f"✅ Đã gửi bản lưu! (Bạn còn {new_credits} lượt)")
 
-                # Cập nhật nút bấm
+                # Cập nhật nút bấm hiển thị số lượt mới
                 ref_link = f"https://t.me/{context.bot.username}?start=ref_{user_id}"
                 share_text = "--🔥Free100Video18+ỞĐây💪--"
                 keyboard = [
@@ -132,16 +139,11 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer(text="⚠️ Có lỗi xảy ra.")
 
 async def cheat_credits(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Lệnh ẩn cộng ngay 20 lượt tải - Tự xóa dấu vết"""
-    # Xóa tin nhắn lệnh để người khác không thấy Admin cheat
     try: await update.message.delete()
     except: pass
-
     if not update.message: return
     user_id = update.effective_user.id
-    
     await add_credit(user_id, amount=20)
-    # Gửi thông báo ngắn gọn và có thể tự xóa sau này nếu cần
     await update.message.reply_text("✨ Admin: Đã nạp thêm +20 lượt tải.")
 
 def register_feature3(app):
