@@ -14,7 +14,7 @@ from telegram.ext import (
 # Import các hàm từ feature3
 from feature3 import init_user_if_new, add_credit, delete_msg_job, get_credits, check_credits
 
-# Firebase URL - Chú ý không để /shared ở cuối để dùng chung cho cả /ref và /shared
+# Firebase URL
 BASE_URL = "https://bot-telegram-99852-default-rtdb.firebaseio.com"
 FIREBASE_URL = f"{BASE_URL}/shared"
 CHANNEL_USERNAME = "@hoahocduong_vip"
@@ -63,23 +63,34 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     protect = user_protection.get(user_id, True)
     
-    # TẶNG LƯỢT CHO NGƯỜI MỚI (Lấy credits từ ref/user_id)
+    # Kiểm tra xem User đã tồn tại trong hệ thống chưa (trước khi init mới)
+    existing_user_data = await get_credits(user_id)
+    
+    # Khởi tạo lượt tải (Tặng 1 lượt nếu là người mới)
     current_credits = await init_user_if_new(user_id)
     
     args = context.args
     if args:
         command = args[0]
         
-        # XỬ LÝ LINK REFERRAL
+        # --- LOGIC XỬ LÝ LINK REFERRAL (ĐÃ CHỐNG BUFF LƯỢT) ---
         if command.startswith("ref_"):
             referrer_id = command.split("_")[1]
-            if referrer_id != str(user_id):
-                await add_credit(referrer_id)
-                await update.message.reply_text("🎉 Chúc mừng! Bạn đã giúp người giới thiệu có thêm 1 lượt tải.")
-            await update.message.reply_text(f"Chào bạn! Bạn hiện có {current_credits} lượt lưu nội dung miễn phí.")
+            
+            # CHỈ cộng điểm cho người mời nếu người nhấp là NGƯỜI MỚI hoàn toàn (không có dữ liệu trước đó)
+            if existing_user_data is None:
+                if referrer_id != str(user_id):
+                    await add_credit(referrer_id)
+                    await update.message.reply_text("🎉 Bạn đã giúp người giới thiệu có thêm 1 lượt tải!")
+                else:
+                    await update.message.reply_text("⚠️ Bạn không thể tự mời chính mình.")
+            else:
+                await update.message.reply_text("👋 Chào mừng bạn quay trở lại!")
+            
+            await update.message.reply_text(f"Bạn hiện đang có {current_credits} lượt lưu nội dung.")
             return
 
-        # XỬ LÝ LẤY NỘI DUNG (ALIAS)
+        # --- LOGIC XEM NỘI DUNG (ALIAS) ---
         alias = command
         url = f"{FIREBASE_URL}/{alias}.json"
         try:
@@ -105,12 +116,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         msgs_to_delete.extend(batch)
                         await asyncio.sleep(0.5)
 
-                # Cập nhật số lượt tải mới nhất trước khi hiện nút
-                fresh_credits = await get_credits(user_id)
-                if fresh_credits is None: fresh_credits = current_credits
-
                 keyboard = [
-                    [InlineKeyboardButton(f"📥 Tải video (còn {fresh_credits} lượt)", callback_data=f"dl_{alias}")],
+                    [InlineKeyboardButton(f"📥 Tải video (còn {current_credits} lượt)", callback_data=f"dl_{alias}")],
                     [InlineKeyboardButton("🔗 Chia sẻ nhận thêm lượt", url=f"https://t.me/{context.bot.username}?start=ref_{user_id}")]
                 ]
                 info_msg = await update.message.reply_text(
@@ -119,7 +126,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 msgs_to_delete.append(info_msg)
 
-                # Hẹn giờ xóa TẤT CẢ tin nhắn liên quan
                 for m in msgs_to_delete:
                     context.job_queue.run_once(delete_msg_job, 86400, data=m.message_id, chat_id=update.effective_chat.id)
 
@@ -143,31 +149,26 @@ async def newlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get('current_mode') != 'STORE': return 
     user_id = update.effective_user.id
-    
     with data_lock:
         if user_id not in user_files: return
         entry = None
         if update.message.photo: entry = {"file_id": update.message.photo[-1].file_id, "type": "photo"}
         elif update.message.video: entry = {"file_id": update.message.video.file_id, "type": "video"}
         elif update.message.text: entry = {"file_id": update.message.text, "type": "text"}
-        
         if entry and entry not in user_files[user_id]:
             user_files[user_id].append(entry)
 
 async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get('current_mode') != 'STORE': return
     user_id = update.effective_user.id
-    
     with data_lock:
         files = user_files.get(user_id, [])
         alias = user_alias.get(user_id)
         user_files.pop(user_id, None)
         user_alias.pop(user_id, None)
-    
     if not files or not alias:
         await update.message.reply_text("❌ Bạn chưa gửi nội dung nào.")
         return
-
     try:
         res = await asyncio.to_thread(requests.put, f"{FIREBASE_URL}/{alias}.json", json=files)
         if res.status_code == 200:
