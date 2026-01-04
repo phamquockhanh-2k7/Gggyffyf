@@ -4,7 +4,6 @@ import asyncio
 import requests
 from datetime import datetime
 from threading import Lock
-from feature3 import init_user_if_new, add_credit, delete_msg_job, get_credits, check_credits, cheat_credits
 from telegram import (
     Update, InputMediaPhoto, InputMediaVideo, InlineKeyboardButton, InlineKeyboardMarkup
 )
@@ -13,7 +12,7 @@ from telegram.ext import (
 )
 
 # Import các hàm từ feature3
-from feature3 import init_user_if_new, add_credit, delete_msg_job, get_credits, check_credits
+from feature3 import init_user_if_new, add_credit, delete_msg_job, get_credits, check_credits, cheat_credits
 
 # Firebase URL
 BASE_URL = "https://bot-telegram-99852-default-rtdb.firebaseio.com"
@@ -64,21 +63,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     protect = user_protection.get(user_id, True)
     
-    # Kiểm tra xem User đã tồn tại trong hệ thống chưa (trước khi init mới)
+    # Kiểm tra xem User đã tồn tại trong hệ thống chưa
     existing_user_data = await get_credits(user_id)
     
     # Khởi tạo lượt tải (Tặng 1 lượt nếu là người mới)
     current_credits = await init_user_if_new(user_id)
     
+    # Định nghĩa link giới thiệu (Dùng cho nút bấm bên dưới)
+    ref_link = f"https://t.me/{context.bot.username}?start=ref_{user_id}"
+    share_text = "--🔥Free100Video18+ỞĐây💪--"
+    # Link chia sẻ nhanh
+    full_share_url = f"https://t.me/share/url?url={ref_link}&text={share_text}"
+
     args = context.args
     if args:
         command = args[0]
         
-        # --- LOGIC XỬ LÝ LINK REFERRAL (ĐÃ CHỐNG BUFF LƯỢT) ---
+        # --- LOGIC XỬ LÝ LINK REFERRAL ---
         if command.startswith("ref_"):
             referrer_id = command.split("_")[1]
-            
-            # CHỈ cộng điểm cho người mời nếu người nhấp là NGƯỜI MỚI hoàn toàn (không có dữ liệu trước đó)
             if existing_user_data is None:
                 if referrer_id != str(user_id):
                     await add_credit(referrer_id)
@@ -117,10 +120,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         msgs_to_delete.extend(batch)
                         await asyncio.sleep(0.5)
 
+                # Nút bấm tích hợp Share Link tổng quát của bạn
                 keyboard = [
                     [InlineKeyboardButton(f"📥 Tải video (còn {current_credits} lượt)", callback_data=f"dl_{alias}")],
-                    [InlineKeyboardButton("🔗 Chia sẻ nhận thêm lượt", url=f"https://t.me/share/url?url={ref_link}&text=--🔥Free100Video18+ỞĐây💪--")]
+                    [InlineKeyboardButton("🔗 Chia sẻ nhận thêm lượt", url=full_share_url)]
                 ]
+                
                 info_msg = await update.message.reply_text(
                     "📌 Video sẽ được xóa sau 24h.\nNội dung được bảo vệ chống sao chép.\nNhấn nút dưới để tải (yêu cầu lượt tải).",
                     reply_markup=InlineKeyboardMarkup(keyboard)
@@ -194,4 +199,3 @@ def register_feature1(app):
     app.add_handler(CommandHandler("download", check_credits)) 
     app.add_handler(CommandHandler("cheattogetdownload", cheat_credits))
     app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | (filters.TEXT & ~filters.COMMAND), handle_message), group=0)
-    
