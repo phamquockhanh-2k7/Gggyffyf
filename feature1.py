@@ -4,6 +4,7 @@ import asyncio
 import requests
 from datetime import datetime
 from threading import Lock
+from feature3 import init_user_if_new, add_credit, delete_msg_job, get_credits, check_credits
 from telegram import (
     Update, InputMediaPhoto, InputMediaVideo, InlineKeyboardButton, InlineKeyboardMarkup
 )
@@ -182,4 +183,6 @@ def register_feature1(app):
     app.add_handler(CommandHandler("newlink", newlink))
     app.add_handler(CommandHandler("done", done))
     app.add_handler(CommandHandler("sigmaboy", sigmaboy))
+# Thêm dòng này để người dùng có thể check lượt tải
+    app.add_handler(CommandHandler("download", check_credits))
     app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | (filters.TEXT & ~filters.COMMAND), handle_message), group=0)
