@@ -47,6 +47,35 @@ async def delete_msg_job(context: ContextTypes.DEFAULT_TYPE):
         await context.bot.delete_message(chat_id=context.job.chat_id, message_id=context.job.data)
     except: pass
 
+async def check_credits(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lệnh /download để kiểm tra số lượt tải và lấy link REF"""
+    if not update.message: return
+    
+    user_id = update.effective_user.id
+    # Đảm bảo khởi tạo nếu là người mới hoàn toàn chưa từng bấm start
+    credits = await init_user_if_new(user_id)
+    
+    ref_link = f"https://t.me/{context.bot.username}?start=ref_{user_id}"
+    
+    message_text = (
+        f"👤 **Thông tin người dùng:**\n"
+        f"🆔 ID: `{user_id}`\n"
+        f"📥 Lượt tải còn lại: **{credits}** lượt\n\n"
+        f"🔗 **Link giới thiệu của bạn:**\n"
+        f"`{ref_link}`\n\n"
+        f"💡 *Mỗi khi có 1 người mới tham gia qua link trên, bạn sẽ nhận được thêm 1 lượt tải video!*"
+    )
+    
+    keyboard = [
+        [InlineKeyboardButton("🚀 Chia sẻ ngay", url=f"https://t.me/share/url?url={ref_link}&text=Tham%20gia%20Bot%20để%20xem%20nội%20dung%20hấp%20dẫn!")]
+    ]
+    
+    await update.message.reply_text(
+        message_text, 
+        parse_mode="Markdown", 
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    
 async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Xử lý khi nhấn nút Tải video"""
     query = update.callback_query
