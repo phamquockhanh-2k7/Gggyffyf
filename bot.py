@@ -7,7 +7,8 @@ from feature2 import register_feature2
 
 # === THAY THẾ BẰNG TOKEN THẬT KHI PUSH LÊN GITHUB/KOYEB ===
 BOT_TOKEN = "7851783179:AAFu58Cs9w1Z7i-xU4pPhnISgg0Sq3vfaPs"
-
+# Trong bot.py
+user_states = {} # Lưu trạng thái: {user_id: 'FEATURE_1' hoặc 'FEATURE_2'}
 def run_bot():
     app = Application.builder().token(BOT_TOKEN).build()
 
