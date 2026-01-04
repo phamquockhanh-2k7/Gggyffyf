@@ -58,28 +58,26 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
         return False
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Xóa tin nhắn lệnh của người dùng
+    try: await update.message.delete()
+    except: pass
+
     if not update.message or not await check_channel_membership(update, context): return
     
     user_id = update.effective_user.id
     protect = user_protection.get(user_id, True)
     
-    # Kiểm tra xem User đã tồn tại trong hệ thống chưa
     existing_user_data = await get_credits(user_id)
-    
-    # Khởi tạo lượt tải (Tặng 1 lượt nếu là người mới)
     current_credits = await init_user_if_new(user_id)
     
-    # Định nghĩa link giới thiệu (Dùng cho nút bấm bên dưới)
     ref_link = f"https://t.me/{context.bot.username}?start=ref_{user_id}"
     share_text = "--🔥Free100Video18+ỞĐây💪--"
-    # Link chia sẻ nhanh
     full_share_url = f"https://t.me/share/url?url={ref_link}&text={share_text}"
 
     args = context.args
     if args:
         command = args[0]
         
-        # --- LOGIC XỬ LÝ LINK REFERRAL ---
         if command.startswith("ref_"):
             referrer_id = command.split("_")[1]
             if existing_user_data is None:
@@ -94,7 +92,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"Bạn hiện đang có {current_credits} lượt lưu nội dung.")
             return
 
-        # --- LOGIC XEM NỘI DUNG (ALIAS) ---
         alias = command
         url = f"{FIREBASE_URL}/{alias}.json"
         try:
@@ -120,7 +117,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         msgs_to_delete.extend(batch)
                         await asyncio.sleep(0.5)
 
-                # Nút bấm tích hợp Share Link tổng quát của bạn
                 keyboard = [
                     [InlineKeyboardButton(f"📥 Tải video (còn {current_credits} lượt)", callback_data=f"dl_{alias}")],
                     [InlineKeyboardButton("🔗 Chia sẻ nhận thêm lượt", url=full_share_url)]
@@ -144,6 +140,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("📥 Chào mừng! Gửi lệnh /newlink để bắt đầu tạo liên kết lưu trữ.")
 
 async def newlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try: await update.message.delete()
+    except: pass
+
     if not update.message or not await check_channel_membership(update, context): return
     user_id = update.effective_user.id
     context.user_data['current_mode'] = 'STORE'
@@ -153,7 +152,12 @@ async def newlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Đã vào chế độ lưu trữ. Hãy gửi Ảnh/Video, xong nhắn /done.")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.user_data.get('current_mode') != 'STORE': return 
+    # Nếu không phải trong chế độ lưu trữ, xóa luôn tin nhắn lạ cho sạch bot
+    if context.user_data.get('current_mode') != 'STORE':
+        try: await update.message.delete()
+        except: pass
+        return 
+
     user_id = update.effective_user.id
     with data_lock:
         if user_id not in user_files: return
@@ -165,6 +169,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_files[user_id].append(entry)
 
 async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try: await update.message.delete()
+    except: pass
+
     if context.user_data.get('current_mode') != 'STORE': return
     user_id = update.effective_user.id
     with data_lock:
@@ -185,6 +192,9 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['current_mode'] = None
 
 async def sigmaboy(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try: await update.message.delete()
+    except: pass
+
     if not update.message or not await check_channel_membership(update, context): return
     user_id = update.effective_user.id
     args = context.args
