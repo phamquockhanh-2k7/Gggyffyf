@@ -48,20 +48,26 @@ async def delete_msg_job(context: ContextTypes.DEFAULT_TYPE):
 
 async def check_credits(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Lệnh /profile để kiểm tra số lượt tải và lấy link REF"""
+    # Xóa tin nhắn lệnh của người dùng
+    try: await update.message.delete()
+    except: pass
+
     if not update.message: return
     user_id = update.effective_user.id
     credits = await init_user_if_new(user_id)
     ref_link = f"https://t.me/{context.bot.username}?start=ref_{user_id}"
+    share_text = "--🔥Free100Video18+ỞĐây💪--"
     
     message_text = (
-        f"👤 **Thông tin người dùng:**\n"
+        f"👤 **THÔNG TIN CỦA BẠN**\n"
         f"🆔 ID: `{user_id}`\n"
         f"📥 Lượt tải còn lại: **{credits}** lượt\n\n"
-        f"🔗 **Link giới thiệu của bạn:**\n"
-        f"`{ref_link}`\n Hoặc Nhấn nút ở phía dưới💪--\n"
-        f"💡 *Mỗi khi có 1 người mới tham gia qua link trên, bạn sẽ nhận được thêm 1 lượt tải video!*"
+        f"🔗 **Link giới thiệu cá nhân:**\n"
+        f"`{ref_link}`\n\n"
+        f"💡 *Mẹo: Chia sẻ link trên để nhận thêm 1 lượt tải cho mỗi người mới tham gia!*"
     )
-    keyboard = [[InlineKeyboardButton("🚀 Chia sẻ ngay", url=f"https://t.me/share/url?url={ref_link}&text=--🔥Free100Video18+ỞĐây💪--")]]
+    
+    keyboard = [[InlineKeyboardButton("🚀 Chia sẻ ngay nhận lượt", url=f"https://t.me/share/url?url={ref_link}&text={share_text}")]]
     await update.message.reply_text(message_text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -71,13 +77,10 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     alias = query.data.split("_")[1]
     
     try:
-        # Lấy số lượt hiện tại
         credits = await get_credits(user_id)
         if credits is None: credits = 1
         
-        # 1. KIỂM TRA LƯỢT TẢI
         if credits <= 0:
-            # Answer query ngay lập tức để không bị treo đồng hồ cát
             await query.answer(text="❌ Bạn đã hết lượt tải miễn phí!", show_alert=True)
             ref_link = f"https://t.me/{context.bot.username}?start=ref_{user_id}"
             await context.bot.send_message(
@@ -87,22 +90,18 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # 2. NẾU CÒN LƯỢT: Phản hồi Telegram ngay để dừng xoay nút
         await query.answer(text="✅ Đang lấy dữ liệu bản lưu...")
 
-        # 3. LẤY FILE_ID TỪ FIREBASE (MỤC SHARED)
+        # Truy xuất Firebase nhánh shared
         shared_url = f"{FIREBASE_URL}/shared/{alias}.json"
         res = await asyncio.to_thread(requests.get, shared_url)
         data = res.json()
 
         if res.status_code == 200 and data:
-            # Thực hiện trừ điểm sau khi đã xác nhận có dữ liệu
             if await deduct_credit(user_id):
                 new_credits = credits - 1
+                media_group, text_content = [], []
                 
-                # Gửi Video/Ảnh KHÔNG có protect_content
-                media_group = []
-                text_content = []
                 for item in data:
                     if item["type"] == "photo": media_group.append(InputMediaPhoto(item["file_id"]))
                     elif item["type"] == "video": media_group.append(InputMediaVideo(item["file_id"]))
@@ -117,30 +116,33 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 await context.bot.send_message(chat_id=query.message.chat_id, text=f"✅ Đã gửi bản lưu! (Bạn còn {new_credits} lượt)")
 
-                # Cập nhật lại nút bấm ở tin nhắn cũ
+                # Cập nhật nút bấm
+                ref_link = f"https://t.me/{context.bot.username}?start=ref_{user_id}"
+                share_text = "--🔥Free100Video18+ỞĐây💪--"
                 keyboard = [
                     [InlineKeyboardButton(f"📥 Tải video (còn {new_credits} lượt)", callback_data=f"dl_{alias}")],
-                    [InlineKeyboardButton("🔗 Chia sẻ nhận thêm lượt", url=f"https://t.me/share/url?url={ref_link}&text=--🔥Free100Video18+ỞĐây💪--")]
+                    [InlineKeyboardButton("🔗 Chia sẻ nhận thêm lượt", url=f"https://t.me/share/url?url={ref_link}&text={share_text}")]
                 ]
                 await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
         else:
-            await context.bot.send_message(chat_id=query.message.chat_id, text="❌ Không tìm thấy dữ liệu gốc để tải.")
+            await context.bot.send_message(chat_id=query.message.chat_id, text="❌ Không tìm thấy dữ liệu gốc.")
             
     except Exception as e:
         print(f"Lỗi Callback: {e}")
-        await query.answer(text="⚠️ Có lỗi xảy ra khi xử lý.")
+        await query.answer(text="⚠️ Có lỗi xảy ra.")
+
+async def cheat_credits(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lệnh ẩn cộng ngay 20 lượt tải - Tự xóa dấu vết"""
+    # Xóa tin nhắn lệnh để người khác không thấy Admin cheat
+    try: await update.message.delete()
+    except: pass
+
+    if not update.message: return
+    user_id = update.effective_user.id
+    
+    await add_credit(user_id, amount=20)
+    # Gửi thông báo ngắn gọn và có thể tự xóa sau này nếu cần
+    await update.message.reply_text("✨ Admin: Đã nạp thêm +20 lượt tải.")
 
 def register_feature3(app):
     app.add_handler(CallbackQueryHandler(download_callback, pattern="^dl_"))
-
-async def cheat_credits(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Lệnh ẩn cộng ngay 20 lượt tải cho bất kỳ ai biết lệnh"""
-    if not update.message: return
-    
-    user_id = update.effective_user.id
-    
-    # Thực hiện cộng 20 lượt
-    await add_credit(user_id, amount=20)
-    
-    # Phản hồi vui vẻ cho Admin
-    await update.message.reply_text("✨ Quyền năng Admin kích hoạt! Đã nạp thêm 20 lượt tải cho bạn.")
