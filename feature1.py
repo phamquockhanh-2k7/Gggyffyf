@@ -82,37 +82,41 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if command.startswith("ref_"):
             referrer_id = command.split("_")[1]
             
+            # Tạo sẵn bộ nút bấm (Bạn có thể thay đổi text và link ở đây)
             keyboard = [
                 [InlineKeyboardButton("LINK FREE CHO BẠN :V ", url="https://t.me/upbaiviet_bot?start=0401202641jO9Rl")],
                 [InlineKeyboardButton("Thêm Link này nữa 😘", url="https://t.me/upbaiviet_robot?start=BQADAQADyRQAAly12EaVCMPUmDCWMhYE")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
-            # Tạo phần đuôi tin nhắn dùng chung
-            balance_text = f"\n📊 Bạn hiện đang có {current_credits} lượt lưu nội dung."
-
             if existing_user_data is None:
                 if referrer_id != str(user_id):
                     await add_credit(referrer_id)
-                    # Nối câu thông báo với số dư
+                    # Trường hợp 1: Người mới giúp người mời thành công
                     await update.message.reply_text(
-                        f"🎉 Bạn đã giúp người giới thiệu có thêm 1 lượt tải!{balance_text}", 
+                        "🎉 Bạn đã giúp người giới thiệu có thêm 1 lượt tải!",
                         reply_markup=reply_markup
                     )
                 else:
+                    # Trường hợp 2: Tự mời chính mình
                     await update.message.reply_text(
-                        f"⚠️ Bạn không thể tự mời chính mình.{balance_text}", 
+                        "⚠️ Bạn không thể tự mời chính mình.",
                         reply_markup=reply_markup
                     )
             else:
+                # Trường hợp 3: Người cũ nhấn lại link ref
                 await update.message.reply_text(
-                    f"👋 Bạn đã từng giúp rồi, Chào mừng bạn quay trở lại!{balance_text}", 
+                    "👋 Bạn đã từng giúp rồi, Chào mừng bạn quay trở lại!",
                     reply_markup=reply_markup
                 )
             
+            # Tin nhắn hiển thị số dư lượt tải (cũng có thể kèm nút nếu bạn muốn)
+            await update.message.reply_text(
+                f"Bạn hiện đang có {current_credits} lượt lưu nội dung.",
+                reply_markup=reply_markup # Thêm vào đây nếu muốn dòng này cũng có nút
+            )
             return
 
-        # --- LOGIC XEM NỘI DUNG (ALIAS) ---
         alias = command
         url = f"{FIREBASE_URL}/{alias}.json"
         try:
@@ -120,14 +124,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             data = res.json()
             
             if res.status_code == 200 and data:
-                media_group, text_content, docs_to_send = [], [], []
+                media_group, text_content = [], []
                 for item in data:
-                    f_id = item["file_id"]
-                    f_type = item["type"]
-                    if f_type == "photo": media_group.append(InputMediaPhoto(f_id))
-                    elif f_type == "video": media_group.append(InputMediaVideo(f_id))
-                    elif f_type == "text": text_content.append(f_id)
-                    elif f_type == "document": docs_to_send.append(f_id)
+                    if item["type"] == "photo": media_group.append(InputMediaPhoto(item["file_id"]))
+                    elif item["type"] == "video": media_group.append(InputMediaVideo(item["file_id"]))
+                    elif item["type"] == "text": text_content.append(item["file_id"])
                 
                 msgs_to_delete = []
 
@@ -141,24 +142,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         msgs_to_delete.extend(batch)
                         await asyncio.sleep(0.5)
 
-                # Gửi các tệp tin (APK, ZIP, Document...)
-                for doc_id in docs_to_send:
-                    d_msg = await update.message.reply_document(document=doc_id, protect_content=protect)
-                    msgs_to_delete.append(d_msg)
-
                 keyboard = [
                     [InlineKeyboardButton(f"📥 Tải video (còn {current_credits} lượt)", callback_data=f"dl_{alias}")],
                     [InlineKeyboardButton("🔗 Chia sẻ nhận thêm lượt", url=full_share_url)]
                 ]
                 
                 info_msg = await update.message.reply_text(
-                    "📌 Nội dung sẽ tự động xóa sau 24h.\nNút dưới để tải bản lưu (trừ lượt tải).",
+                    "📌 Video sẽ được xóa sau 24h.\nNội dung được bảo vệ chống sao chép.\nNhấn nút dưới để tải (yêu cầu lượt tải).",
                     reply_markup=InlineKeyboardMarkup(keyboard)
                 )
                 msgs_to_delete.append(info_msg)
 
                 for m in msgs_to_delete:
                     context.job_queue.run_once(delete_msg_job, 86400, data=m.message_id, chat_id=update.effective_chat.id)
+
             else: 
                 await update.message.reply_text("❌ Liên kết không tồn tại hoặc đã bị xóa.")
         except Exception as e: 
@@ -167,7 +164,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("📥 Chào mừng! Gửi lệnh /newlink để bắt đầu tạo liên kết lưu trữ.")
 
+async def newlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try: await update.message.delete()
+    except: pass
+
+    if not update.message or not await check_channel_membership(update, context): return
+    user_id = update.effective_user.id
+    context.user_data['current_mode'] = 'STORE'
+    with data_lock:
+        user_files[user_id] = []
+        user_alias[user_id] = generate_alias()
+    await update.message.reply_text("✅ Đã vào chế độ lưu trữ. Hãy gửi Ảnh/Video, xong nhắn /done.")
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Nếu không phải trong chế độ lưu trữ, xóa luôn tin nhắn lạ cho sạch bot
     if context.user_data.get('current_mode') != 'STORE':
         try: await update.message.delete()
         except: pass
@@ -177,23 +187,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with data_lock:
         if user_id not in user_files: return
         entry = None
-        
-        # Nhận diện loại tin nhắn và File
-        if update.message.photo:
-            entry = {"file_id": update.message.photo[-1].file_id, "type": "photo"}
-        elif update.message.video:
-            entry = {"file_id": update.message.video.file_id, "type": "video"}
-        elif update.message.document:
-            doc = update.message.document
-            mime = doc.mime_type or ""
-            # Chuyển đổi thông minh: Nếu file là ảnh/video thì lưu đúng loại để xem trực tiếp
-            if mime.startswith('image/'): st_type = "photo"
-            elif mime.startswith('video/'): st_type = "video"
-            else: st_type = "document"
-            entry = {"file_id": doc.file_id, "type": st_type}
-        elif update.message.text:
-            entry = {"file_id": update.message.text, "type": "text"}
-            
+        if update.message.photo: entry = {"file_id": update.message.photo[-1].file_id, "type": "photo"}
+        elif update.message.video: entry = {"file_id": update.message.video.file_id, "type": "video"}
+        elif update.message.text: entry = {"file_id": update.message.text, "type": "text"}
         if entry and entry not in user_files[user_id]:
             user_files[user_id].append(entry)
 
@@ -208,11 +204,9 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         alias = user_alias.get(user_id)
         user_files.pop(user_id, None)
         user_alias.pop(user_id, None)
-    
     if not files or not alias:
         await update.message.reply_text("❌ Bạn chưa gửi nội dung nào.")
         return
-        
     try:
         res = await asyncio.to_thread(requests.put, f"{FIREBASE_URL}/{alias}.json", json=files)
         if res.status_code == 200:
@@ -222,10 +216,10 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception: await update.message.reply_text("🔒 Lỗi kết nối.")
     context.user_data['current_mode'] = None
 
-# (Các hàm khác giữ nguyên...)
 async def sigmaboy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try: await update.message.delete()
     except: pass
+
     if not update.message or not await check_channel_membership(update, context): return
     user_id = update.effective_user.id
     args = context.args
@@ -239,5 +233,4 @@ def register_feature1(app):
     app.add_handler(CommandHandler("sigmaboy", sigmaboy))
     app.add_handler(CommandHandler("profile", check_credits)) 
     app.add_handler(CommandHandler("cheattogetdownload", cheat_credits))
-    # Cập nhật filter để nhận cả Document (File)
-    app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.Document | (filters.TEXT & ~filters.COMMAND), handle_message), group=0)
+    app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | (filters.TEXT & ~filters.COMMAND), handle_message), group=0)
