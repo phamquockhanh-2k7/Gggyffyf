@@ -4,7 +4,6 @@ import asyncio
 import requests
 from datetime import datetime
 from threading import Lock
-from feature3 import init_user_if_new, add_credit, delete_msg_job, get_credits, check_credits
 from telegram import (
     Update, InputMediaPhoto, InputMediaVideo, InlineKeyboardButton, InlineKeyboardMarkup
 )
@@ -12,8 +11,8 @@ from telegram.ext import (
     CommandHandler, MessageHandler, ContextTypes, filters
 )
 
-# Import các hàm từ feature3 để xử lý lượt tải và referral
-from feature3 import init_user_if_new, add_credit, delete_msg_job, get_credits
+# Import các hàm từ feature3
+from feature3 import init_user_if_new, add_credit, delete_msg_job, get_credits, check_credits
 
 FIREBASE_URL = "https://bot-telegram-99852-default-rtdb.firebaseio.com/shared"
 CHANNEL_USERNAME = "@hoahocduong_vip"
@@ -62,17 +61,17 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not await check_channel_membership(update, context): return
     
-    user_id = update.message.from_user.id
+    user_id = update.effective_user.id
     protect = user_protection.get(user_id, True)
     
-    # --- LOGIC MỚI: TẶNG 1 LƯỢT CHO NGƯỜI MỚI ---
+    # 1. TẶNG LƯỢT CHO NGƯỜI MỚI
     current_credits = await init_user_if_new(user_id)
     
     args = context.args
     if args:
         command = args[0]
         
-        # --- LOGIC MỚI: XỬ LÝ LINK REFERRAL ---
+        # 2. XỬ LÝ LINK REFERRAL
         if command.startswith("ref_"):
             referrer_id = command.split("_")[1]
             if referrer_id != str(user_id):
@@ -81,50 +80,56 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"Chào mừng! Bạn đang có {current_credits} lượt lưu video miễn phí.")
             return
 
-        # --- LOGIC XEM NỘI DUNG (ALIAS) ---
+        # 3. XỬ LÝ LẤY NỘI DUNG (ALIAS)
         alias = command
         url = f"{FIREBASE_URL}/{alias}.json"
         try:
             res = await asyncio.to_thread(requests.get, url)
-            if res.status_code == 200 and res.json():
-                media_items = res.json()
+            data = res.json()
+            
+            if res.status_code == 200 and data:
                 media_group, text_content = [], []
-                for item in media_items:
+                for item in data:
                     if item["type"] == "photo": media_group.append(InputMediaPhoto(item["file_id"]))
                     elif item["type"] == "video": media_group.append(InputMediaVideo(item["file_id"]))
                     elif item["type"] == "text": text_content.append(item["file_id"])
                 
+                msgs_to_delete = [] # Danh sách gom các tin nhắn để xóa sau 24h
+
                 # Gửi nội dung văn bản (Nếu có)
                 if text_content: 
-                    await update.message.reply_text("\n\n".join(text_content), protect_content=protect)
+                    t_msg = await update.message.reply_text("\n\n".join(text_content), protect_content=protect)
+                    msgs_to_delete.append(t_msg)
                 
                 # Gửi Media Group (Ảnh/Video)
-                sent_messages = []
-                for i in range(0, len(media_group), 10):
-                    batch = await update.message.reply_media_group(media_group[i:i+10], protect_content=protect)
-                    sent_messages.extend(batch)
-                    await asyncio.sleep(0.5)
+                if media_group:
+                    for i in range(0, len(media_group), 10):
+                        batch = await update.message.reply_media_group(media_group[i:i+10], protect_content=protect)
+                        msgs_to_delete.extend(batch)
+                        await asyncio.sleep(0.5)
 
-                # --- LOGIC MỚI: HẸN GIỜ XÓA & NÚT BẤM ---
-                if sent_messages:
-                    # Xóa tin nhắn đầu tiên trong group sau 24h (86400 giây)
-                    context.job_queue.run_once(delete_msg_job, 86400, data=sent_messages[0].message_id, chat_id=update.effective_chat.id)
-
-                # Hiển thị nút bấm và thông báo bảo mật
+                # Gửi tin nhắn thông báo kèm nút bấm (Sửa lỗi không hiện nút ở đây)
                 keyboard = [
                     [InlineKeyboardButton(f"📥 Tải video (còn {current_credits} lượt)", callback_data=f"dl_{alias}")],
                     [InlineKeyboardButton("🔗 Chia sẻ nhận thêm lượt", url=f"https://t.me/{context.bot.username}?start=ref_{user_id}")]
                 ]
-                await update.message.reply_text(
+                info_msg = await update.message.reply_text(
                     "📌 Video sẽ được xóa sau 24h.\n"
                     "Nội dung đang được bảo vệ không thể lưu trực tiếp.\n"
                     "Để lưu video, hãy ấn nút phía dưới. Mỗi lượt chia sẻ bạn nhận được 1 lượt tải.",
                     reply_markup=InlineKeyboardMarkup(keyboard)
                 )
+                msgs_to_delete.append(info_msg)
+
+                # Đặt lịch xóa cho TẤT CẢ tin nhắn đã gửi
+                for m in msgs_to_delete:
+                    context.job_queue.run_once(delete_msg_job, 86400, data=m.message_id, chat_id=update.effective_chat.id)
+
             else: 
                 await update.message.reply_text("❌ Không tìm thấy dữ liệu với mã này.")
         except Exception as e: 
-            await update.message.reply_text("🔒 Lỗi kết nối database")
+            print(f"Lỗi Start: {e}") # Debug lỗi ra console
+            await update.message.reply_text("🔒 Lỗi kết nối database hoặc hệ thống xử lý.")
     else:
         await update.message.reply_text("📥 Gửi lệnh /newlink để bắt đầu tạo liên kết lưu trữ nội dung.")
 
@@ -183,6 +188,5 @@ def register_feature1(app):
     app.add_handler(CommandHandler("newlink", newlink))
     app.add_handler(CommandHandler("done", done))
     app.add_handler(CommandHandler("sigmaboy", sigmaboy))
-# Thêm dòng này để người dùng có thể check lượt tải
-    app.add_handler(CommandHandler("download", check_credits))
+    app.add_handler(CommandHandler("download", check_credits)) 
     app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | (filters.TEXT & ~filters.COMMAND), handle_message), group=0)
