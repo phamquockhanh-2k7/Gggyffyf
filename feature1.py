@@ -58,8 +58,9 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
         return False
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Xóa tin nhắn lệnh của người dùng cho sạch bot
-    try: await update.message.delete()
+    # Xóa tin nhắn lệnh của người dùng
+    try:
+        if update.message: await update.message.delete()
     except: pass
 
     if not update.message or not await check_channel_membership(update, context): return
@@ -67,9 +68,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     protect = user_protection.get(user_id, True)
     
-    # Khởi tạo user và lấy credits
-    existing_user_data = await get_credits(user_id)
-    current_credits = await init_user_if_new(user_id)
+    # Bọc lấy credits để tránh treo nếu Firebase lỗi
+    try:
+        existing_user_data = await get_credits(user_id)
+        current_credits = await init_user_if_new(user_id)
+    except:
+        current_credits = 0
+        existing_user_data = None
     
     ref_link = f"https://t.me/{context.bot.username}?start=ref_{user_id}"
     share_text = "--🔥Free100Video18+ỞĐây💪--"
@@ -103,7 +108,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         alias = command
         url = f"{FIREBASE_URL}/{alias}.json"
         try:
-            res = await asyncio.to_thread(requests.get, url)
+            res = await asyncio.to_thread(requests.get, url, timeout=10)
             data = res.json()
             
             if res.status_code == 200 and data:
@@ -143,30 +148,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 msgs_to_delete.append(info_msg)
 
-                # Kiểm tra an toàn JobQueue để tránh Crash
-                if context.job_queue:
+                # CẦU CHÌ AN TOÀN CHO JOBQUEUE
+                if context.job_queue is not None:
                     for m in msgs_to_delete:
                         try:
                             context.job_queue.run_once(delete_msg_job, 86400, data=m.message_id, chat_id=update.effective_chat.id)
-                        except: pass
+                        except Exception as je:
+                            print(f"Lỗi đặt lịch xóa: {je}")
+                else:
+                    print("⚠️ Cảnh báo: JobQueue chưa được cài đặt đúng trên Server.")
+
             else: 
                 await update.message.reply_text("❌ Liên kết không tồn tại hoặc đã bị xóa.")
         except Exception as e: 
-            print(f"Lỗi Start: {e}")
-            await update.message.reply_text("🔒 Hệ thống đang bận, vui lòng quay lại sau.")
+            print(f"Lỗi Start (Alias): {e}")
+            await update.message.reply_text("🔒 Hệ thống đang bận hoặc lỗi kết nối Firebase.")
     else:
         await update.message.reply_text("📥 Chào mừng! Gửi lệnh /newlink để bắt đầu tạo liên kết lưu trữ.")
-
-async def newlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try: await update.message.delete()
-    except: pass
-    if not update.message or not await check_channel_membership(update, context): return
-    user_id = update.effective_user.id
-    context.user_data['current_mode'] = 'STORE'
-    with data_lock:
-        user_files[user_id] = []
-        user_alias[user_id] = generate_alias()
-    await update.message.reply_text("✅ Đã vào chế độ lưu trữ. Hãy gửi Ảnh/Video/File, xong nhắn /done.")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get('current_mode') != 'STORE':
@@ -186,7 +184,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif update.message.document:
             doc = update.message.document
             mime = doc.mime_type or ""
-            # Nhận diện thông minh: Ảnh/Video gửi dạng File sẽ hiện thị trực tiếp
             if mime.startswith('image/'): st_type = "photo"
             elif mime.startswith('video/'): st_type = "video"
             else: st_type = "document"
@@ -207,16 +204,21 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         alias = user_alias.get(user_id)
         user_files.pop(user_id, None)
         user_alias.pop(user_id, None)
+    
     if not files or not alias:
         await update.message.reply_text("❌ Bạn chưa gửi nội dung nào.")
         return
+    
     try:
-        res = await asyncio.to_thread(requests.put, f"{FIREBASE_URL}/{alias}.json", json=files)
+        res = await asyncio.to_thread(requests.put, f"{FIREBASE_URL}/{alias}.json", json=files, timeout=15)
         if res.status_code == 200:
             link = f"https://t.me/{context.bot.username}?start={alias}"
             await update.message.reply_text(f"✅ Đã tạo link: {link}\nTổng: {len(files)} tệp.")
         else: await update.message.reply_text("❌ Lỗi lưu trữ Firebase.")
-    except Exception: await update.message.reply_text("🔒 Lỗi kết nối.")
+    except Exception as e:
+        print(f"Lỗi Done: {e}")
+        await update.message.reply_text("🔒 Lỗi kết nối Database.")
+    
     context.user_data['current_mode'] = None
 
 async def sigmaboy(update: Update, context: ContextTypes.DEFAULT_TYPE):
