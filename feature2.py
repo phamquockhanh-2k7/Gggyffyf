@@ -7,7 +7,7 @@ from feature1 import check_channel_membership
 
 # --- CẤU HÌNH API ---
 API_KEY = "5d2e33c19847dea76f4fdb49695fd81aa669af86"
-API_URL = "https://vuotlink.vip/api"
+API_URL = "https://oklink.cfd/api"
 
 # Pattern Regex để tìm link (nhận diện cả abc.com và http://abc.com)
 URL_PATTERN = r'(https?://\S+|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\S*)'
@@ -73,7 +73,7 @@ async def handle_api_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if processing_msg: await processing_msg.delete()
         
         # Gửi danh sách link rút gọn cuối cùng
-        response_text = "🔗 **Link đã rút gọn của bạn:**\n\n" + "\n".join(shortened_results)
+        response_text = "🔗 Link đã rút gọn:\n\n" + "\n".join(shortened_results)
         await update.message.reply_text(response_text, disable_web_page_preview=True)
 
 def register_feature2(app):
