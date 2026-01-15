@@ -1,85 +1,97 @@
+import aiohttp
+import re
+import urllib.parse
 import asyncio
-import requests
 from telegram import Update
-# ĐÃ THÊM 'filters' VÀO DÒNG IMPORT DƯỚI ĐÂY
-from telegram.ext import ContextTypes, ChatJoinRequestHandler, CommandHandler, filters
+from telegram.ext import CommandHandler, MessageHandler, ContextTypes, filters
+from feature1 import check_channel_membership
 
-# Cấu hình Firebase
-BASE_DB_URL = 'https://bot-telegram-99852-default-rtdb.firebaseio.com'
+# --- CẤU HÌNH API ---
+API_KEY_1 = "5d2e33c19847dea76f4fdb49695fd81aa669af86"
+API_URL_1 = "https://oklink.cfd/api"
+API_KEY_2 = "4a06a2345a0e4ca098f9bf7b37a246439d5912e5"
+API_URL_2 = "https://linkx.me/api"
+API_KEY_3 = "b0bb16d8f14caaf4bfb6f8a0cceac1a8ee5e9668"
+API_URL_3 = "https://anonlink.io/api"
+URL_PATTERN = r'(https?://\S+|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\S*)'
 
-async def collect_id_silent(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Lưu ID người xin vào nhóm qua REST API"""
-    request = update.chat_join_request
-    user = request.from_user
-    chat = request.chat
+# --- CÁC HÀM RÚT GỌN ---
+async def get_short_oklink(long_url: str) -> str:
+    if not long_url.startswith(("http://", "https://")): long_url = "https://" + long_url
+    encoded_url = urllib.parse.quote(long_url)
+    url = f"{API_URL_1}?api={API_KEY_1}&url={encoded_url}&format=text"
     try:
-        user_info = {
-            'first_name': user.first_name,
-            'username': user.username if user.username else "No Username",
-            'joined_date': str(request.date),
-            'from_source': chat.title
-        }
-        url = f"{BASE_DB_URL}/IDUser/{user.id}.json"
-        await asyncio.to_thread(requests.put, url, json=user_info)
-        print(f"✅ [SOS Data] Đã lưu ID: {user.id} (Nguồn: {chat.title})")
-    except Exception as e:
-        print(f"❌ Lỗi lưu trữ SOS: {e}")
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=10) as resp:
+                return (await resp.text()).strip() if resp.status == 200 else "Lỗi"
+    except: return "Lỗi"
 
-async def check_full_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_short_linkx(long_url: str) -> str:
+    if not long_url.startswith(("http://", "https://")): long_url = "https://" + long_url
+    encoded_url = urllib.parse.quote(long_url)
+    url = f"{API_URL_2}?api={API_KEY_2}&url={encoded_url}&format=text"
     try:
-        url = f"{BASE_DB_URL}/IDUser.json"
-        res = await asyncio.to_thread(requests.get, url)
-        if res.status_code != 200 or not res.json():
-            await update.message.reply_text("📂 Kho dữ liệu SOS hiện đang TRỐNG.", parse_mode="HTML")
-            return
-        data = res.json()
-        total_count = len(data)
-        group_stats = {}
-        for uid, info in data.items():
-            source = info.get('from_source', 'Không rõ')
-            group_stats[source] = group_stats.get(source, 0) + 1
-        
-        # Sắp xếp từ cao xuống thấp
-        sorted_stats = sorted(group_stats.items(), key=lambda item: item[1], reverse=True)
-        
-        msg = f"📂 <b>BÁO CÁO SOS</b>\n👥 Tổng ID: <b>{total_count}</b>\n\n📊 <b>TOP NGUỒN:</b>\n"
-        for name, count in sorted_stats:
-            msg += f"🔥 {name}: <b>{count}</b> mem\n"
-        await update.message.reply_text(msg, parse_mode="HTML")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Lỗi: {e}")
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=10) as resp:
+                return (await resp.text()).strip() if resp.status == 200 else "Lỗi"
+    except: return "Lỗi"
 
-async def send_to_full_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.reply_to_message:
-        await update.message.reply_text("⚠️ Hãy Reply tin nhắn cần gửi và gõ lệnh.", parse_mode="HTML")
-        return
-    url = f"{BASE_DB_URL}/IDUser.json"
+async def get_short_anonlink(long_url: str) -> str:
+    if not long_url.startswith(("http://", "https://")): long_url = "https://" + long_url
+    encoded_url = urllib.parse.quote(long_url)
+    url = f"{API_URL_3}?api={API_KEY_3}&url={encoded_url}&format=text"
     try:
-        res = await asyncio.to_thread(requests.get, url)
-        if res.status_code != 200 or not res.json():
-            await update.message.reply_text("❌ Danh sách trống.")
-            return
-        user_ids = list(res.json().keys())
-        status_msg = await update.message.reply_text(f"🚀 Đang gửi cho {len(user_ids)} người...", parse_mode="HTML")
-        success, blocked = 0, 0
-        for user_id in user_ids:
-            try:
-                await context.bot.copy_message(
-                    chat_id=int(user_id),
-                    from_chat_id=update.message.chat_id,
-                    message_id=update.message.reply_to_message.message_id
-                )
-                success += 1
-                await asyncio.sleep(0.05)
-            except: blocked += 1
-        await status_msg.edit_text(f"✅ HOÀN TẤT\n🟢 Thành công: {success}\n🔴 Thất bại: {blocked}")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Lỗi: {e}")
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=10) as resp:
+                return (await resp.text()).strip() if resp.status == 200 else "Lỗi"
+    except: return "Lỗi"
 
-def register_feature4(app):
-    # ChatJoinRequestHandler BẮT BUỘC phải hoạt động ở nhóm/kênh để bắt người (KHÔNG thêm filter Private)
-    app.add_handler(ChatJoinRequestHandler(collect_id_silent))
-    
-    # Lệnh Admin thì chỉ cho dùng riêng tư
-    app.add_handler(CommandHandler("FullIn4", check_full_info, filters=filters.ChatType.PRIVATE))
-    app.add_handler(CommandHandler("sendtofullin4", send_to_full_info, filters=filters.ChatType.PRIVATE))
+async def api_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not await check_channel_membership(update, context): return
+    args = context.args
+    if args and args[0].lower() == "on":
+        context.user_data['current_mode'] = 'API'
+        await update.message.reply_text("🚀 Đã BẬT chế độ rút gọn!")
+    elif args and args[0].lower() == "off":
+        context.user_data['current_mode'] = None
+        await update.message.reply_text("💤 Đã TẮT chế độ rút gọn.")
+
+async def handle_api_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not await check_channel_membership(update, context): return
+    # Chỉ xử lý khi đã bật chế độ
+    if context.user_data.get('current_mode') != 'API': return
+
+    text = update.message.text or ""
+    urls = re.findall(URL_PATTERN, text)
+    if not urls: return
+
+    for url in urls:
+        t1, t2, t3 = await asyncio.gather(
+            get_short_oklink(url), 
+            get_short_linkx(url), 
+            get_short_anonlink(url)
+        )
+
+        await update.message.reply_text(f"🔗 Gốc: {url}", disable_web_page_preview=True)
+        label_1 = "**Link vượt: **"         
+        label_2 = "**Link mua: (rẻ hơn )**" 
+        label_3 = "**Link mua:**"            
+        footer = (
+            "\n➖➖➖➖➖➖\n"
+            "<b>😘Nếu mua link hãy chọn linkx hoặc anonlink để mua giá rẻ hơn, nếu vượt link hãy dùng oklink, có thể mua nhưng sẽ đắt hơn!</b>\n\n"
+            "<b>Cách vượt Link:</b> https://t.me/upbaiviet_robot?start=BQADAQADaAoAArCTQEdcuTQeEAQaWxYE\n\n"
+            "<b>Cách Mua link:</b> https://t.me/upbaiviet_robot?start=BQADAQADdAoAArCTQEd1zU69QpPMShYE"
+        )
+        content_to_copy = (
+            f"{label_2}\n {t2}\n"
+            f"{label_3}\n {t3}\n"
+            f"{label_1}\n {t1}"
+            f"{footer}" 
+        )
+        await update.message.reply_text(f"```\n{content_to_copy}\n```", parse_mode="Markdown")
+        await asyncio.sleep(0.5)
+
+def register_feature2(app):
+    # ĐÃ BỎ BỘ LỌC -> Ai nhắn link trong nhóm là Bot bắt luôn
+    app.add_handler(CommandHandler("api", api_command))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_api_message), group=1)
