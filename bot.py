@@ -18,7 +18,7 @@ def main():
     register_feature1(app)
     register_feature2(app)
     register_feature3(app)
-    register_feature4(application)
+    register_feature4(app)
 
     print("🤖 Bot is running...")
     app.run_polling()
