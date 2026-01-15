@@ -1,82 +1,113 @@
 import aiohttp
 import re
 import urllib.parse
+import asyncio
 from telegram import Update
 from telegram.ext import CommandHandler, MessageHandler, ContextTypes, filters
 from feature1 import check_channel_membership
 
 # --- CẤU HÌNH API ---
-API_KEY = "5d2e33c19847dea76f4fdb49695fd81aa669af86"
-API_URL = "https://oklink.cfd/api"
 
-# Pattern Regex để tìm link (nhận diện cả abc.com và http://abc.com)
+# 1. Oklink (Vuotlink)
+API_KEY_1 = "5d2e33c19847dea76f4fdb49695fd81aa669af86"
+API_URL_1 = "https://oklink.cfd/api"
+
+# 2. LinkX (Note API)
+API_KEY_2 = "4a06a2345a0e4ca098f9bf7b37a246439d5912e5"
+API_URL_2 = "https://linkx.me/note-api"
+
+# 3. AnonLink (Mới thêm)
+API_KEY_3 = "b0bb16d8f14caaf4bfb6f8a0cceac1a8ee5e9668"
+API_URL_3 = "https://anonlink.io/api"
+
+# Regex tìm link
 URL_PATTERN = r'(https?://\S+|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\S*)'
 
-async def get_short_link(long_url: str) -> str:
-    """Gọi API rút gọn link theo định dạng TEXT từ tài liệu"""
-    # Chuẩn hóa link: Nếu thiếu http/https thì thêm vào để API không lỗi
-    if not long_url.startswith(("http://", "https://")):
-        long_url = "https://" + long_url
-    
-    # Encode URL để tránh lỗi ký tự đặc biệt
+async def get_short_oklink(long_url: str) -> str:
+    """Rút gọn bằng Oklink"""
+    if not long_url.startswith(("http://", "https://")): long_url = "https://" + long_url
     encoded_url = urllib.parse.quote(long_url)
-    
-    # Xây dựng URL gọi API theo mẫu format=text
-    final_api_call = f"{API_URL}?api={API_KEY}&url={encoded_url}&format=text"
-    
+    url = f"{API_URL_1}?api={API_KEY_1}&url={encoded_url}&format=text"
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(final_api_call, timeout=10) as response:
-                if response.status == 200:
-                    result = await response.text()
-                    return result.strip() if result else long_url
-                return long_url
-    except Exception as e:
-        print(f"Lỗi API: {e}")
-        return long_url
+            async with session.get(url, timeout=10) as resp:
+                return (await resp.text()).strip() if resp.status == 200 else "Lỗi Oklink"
+    except: return "Lỗi kết nối Oklink"
+
+async def get_short_linkx(long_url: str) -> str:
+    """Rút gọn bằng LinkX"""
+    if not long_url.startswith(("http://", "https://")): long_url = "https://" + long_url
+    encoded_url = urllib.parse.quote(long_url)
+    url = f"{API_URL_2}?api={API_KEY_2}&content={encoded_url}&format=text"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=10) as resp:
+                return (await resp.text()).strip() if resp.status == 200 else "Lỗi LinkX"
+    except: return "Lỗi kết nối LinkX"
+
+async def get_short_anonlink(long_url: str) -> str:
+    """Rút gọn bằng AnonLink"""
+    if not long_url.startswith(("http://", "https://")): long_url = "https://" + long_url
+    encoded_url = urllib.parse.quote(long_url)
+    # Cấu trúc API AnonLink: api + url + format=text
+    url = f"{API_URL_3}?api={API_KEY_3}&url={encoded_url}&format=text"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=10) as resp:
+                return (await resp.text()).strip() if resp.status == 200 else "Lỗi AnonLink"
+    except: return "Lỗi kết nối AnonLink"
 
 async def api_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Lệnh bật/tắt chế độ rút gọn: /api on hoặc /api off"""
+    """Bật tắt tính năng"""
     if not update.message or not await check_channel_membership(update, context): return
-    
     args = context.args
     if args and args[0].lower() == "on":
         context.user_data['current_mode'] = 'API'
-        await update.message.reply_text("🚀 **Đã BẬT** chế độ rút gọn link tự động!\n*(Nhận diện mọi định dạng abc.com)*")
+        await update.message.reply_text("🚀 **Đã BẬT** chế độ rút gọn 3 Server (Oklink, LinkX, AnonLink)!")
     elif args and args[0].lower() == "off":
         context.user_data['current_mode'] = None
         await update.message.reply_text("💤 **Đã TẮT** chế độ rút gọn link.")
 
 async def handle_api_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Chỉ quét link trong văn bản và trả về kết quả rút gọn"""
+    """Xử lý và trả về 3 link"""
     if not update.message or not await check_channel_membership(update, context): return
     if context.user_data.get('current_mode') != 'API': return
 
     text = update.message.text or ""
-    # Tìm tất cả link có trong tin nhắn
     urls = re.findall(URL_PATTERN, text)
-    
     if not urls: return
 
-    # Thông báo đang xử lý nếu có nhiều link
-    processing_msg = None
     if len(urls) > 1:
-        processing_msg = await update.message.reply_text("🔄 Đang rút gọn danh sách link...")
+        processing_msg = await update.message.reply_text("🔄 Đang xử lý danh sách link...")
+    else:
+        processing_msg = None
 
-    shortened_results = []
+    final_results = []
+    
     for url in urls:
-        short = await get_short_link(url)
-        shortened_results.append(short)
+        # Chạy song song 3 tác vụ
+        task1 = asyncio.create_task(get_short_oklink(url))
+        task2 = asyncio.create_task(get_short_linkx(url))
+        task3 = asyncio.create_task(get_short_anonlink(url))
+        
+        # Chờ cả 3 xong
+        l1, l2, l3 = await asyncio.gather(task1, task2, task3)
 
-    if shortened_results:
-        # Xóa thông báo "đang xử lý" nếu có
+        res_block = (
+            f"🔗 **Gốc:** `{url}`\n"
+            f"1️⃣ **Oklink:** {l1}\n"
+            f"2️⃣ **LinkX:** {l2}\n"
+            f"3️⃣ **AnonLink:** {l3}"
+        )
+        final_results.append(res_block)
+
+    if final_results:
         if processing_msg: await processing_msg.delete()
         
-        # Gửi danh sách link rút gọn cuối cùng
-        response_text = "🔗 Link đã rút gọn:\n\n" + "\n".join(shortened_results)
-        await update.message.reply_text(response_text, disable_web_page_preview=True)
+        footer = "\n➖➖➖➖➖\n📢 *Bot Rút Gọn Link Đa Năng*"
+        response_text = "✅ **KẾT QUẢ RÚT GỌN:**\n\n" + "\n\n".join(final_results) + footer
+        await update.message.reply_text(response_text, disable_web_page_preview=True, parse_mode="Markdown")
 
 def register_feature2(app):
     app.add_handler(CommandHandler("api", api_command))
-    # Chạy ở Group 1 để không ảnh hưởng đến logic lưu trữ của Feature 1
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_api_message), group=1)
