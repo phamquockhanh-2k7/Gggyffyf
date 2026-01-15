@@ -58,6 +58,7 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
         return False
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Bot chỉ trả lời ở Private, và kiểm tra membership
     if not update.message or not await check_channel_membership(update, context): return
     
     user_id = update.effective_user.id
@@ -88,7 +89,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     await update.message.reply_text("⚠️ Bạn không thể tự mời chính mình.", reply_markup=reply_markup)
             else:
-                await update.message.reply_text("👋 Bạn đã từng giúp rồi, Chào mừng bạn quay trở lại!", reply_markup=reply_markup)
+                await update.message.reply_text("👋 Chào mừng bạn quay trở lại!", reply_markup=reply_markup)
             
             await update.message.reply_text(f"Bạn hiện đang có {current_credits} lượt lưu nội dung.", reply_markup=reply_markup)
             return
@@ -124,7 +125,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ]
                 
                 info_msg = await update.message.reply_text(
-                    "📌Admin thường xuyên gửi Video FREE cho người dùng thông qua BOT.\nNếu bạn xóa tin nhắn bot thì cũng đừng chặn(chỉ xóa) nhé để tránh lạc mất nhau \nNhấn nút dưới để tải (yêu cầu lượt tải).",
+                    "📌 Video sẽ được xóa sau 24h.\nNội dung được bảo vệ chống sao chép.\nNhấn nút dưới để tải (yêu cầu lượt tải).",
                     reply_markup=InlineKeyboardMarkup(keyboard)
                 )
                 msgs_to_delete.append(info_msg)
@@ -150,7 +151,6 @@ async def newlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Đã vào chế độ lưu trữ. Hãy gửi Ảnh/Video, xong nhắn /done.")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # KHÔNG XÓA TIN NHẮN - CHỈ BỎ QUA NẾU KO PHẢI CHẾ ĐỘ STORE
     if context.user_data.get('current_mode') != 'STORE':
         return 
 
@@ -192,10 +192,7 @@ async def sigmaboy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⚙️ Cấu hình bảo mật đã được cập nhật.")
 
 def register_feature1(app):
-    # --- QUAN TRỌNG: THÊM filters.ChatType.PRIVATE VÀO MỌI LỆNH ---
-    # Điều này bắt buộc người dùng phải nhắn riêng với Bot mới dùng được lệnh.
-    # Trong nhóm chat, các lệnh này sẽ VÔ HIỆU.
-    
+    # Bộ lọc ChatType.PRIVATE đảm bảo chỉ chạy khi nhắn tin riêng
     app.add_handler(CommandHandler("start", start, filters=filters.ChatType.PRIVATE))
     app.add_handler(CommandHandler("newlink", newlink, filters=filters.ChatType.PRIVATE))
     app.add_handler(CommandHandler("done", done, filters=filters.ChatType.PRIVATE))
@@ -203,7 +200,7 @@ def register_feature1(app):
     app.add_handler(CommandHandler("profile", check_credits, filters=filters.ChatType.PRIVATE))
     app.add_handler(CommandHandler("cheattogetdownload", cheat_credits, filters=filters.ChatType.PRIVATE))
     
-    # Chỉ xử lý file upload ở tin nhắn riêng tư
+    # Chỉ nhận file upload ở tin nhắn riêng
     app.add_handler(MessageHandler(
         filters.ChatType.PRIVATE & (filters.PHOTO | filters.VIDEO | (filters.TEXT & ~filters.COMMAND)), 
         handle_message
