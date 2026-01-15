@@ -58,6 +58,7 @@ async def api_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_api_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not await check_channel_membership(update, context): return
+    # Chỉ xử lý khi đã bật chế độ
     if context.user_data.get('current_mode') != 'API': return
 
     text = update.message.text or ""
@@ -91,7 +92,6 @@ async def handle_api_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await asyncio.sleep(0.5)
 
 def register_feature2(app):
-    # Lệnh /api chỉ chạy Private
-    app.add_handler(CommandHandler("api", api_command, filters=filters.ChatType.PRIVATE))
-    # Bắt link cũng chỉ chạy Private
-    app.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND, handle_api_message), group=1)
+    # ĐÃ BỎ BỘ LỌC -> Ai nhắn link trong nhóm là Bot bắt luôn
+    app.add_handler(CommandHandler("api", api_command))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_api_message), group=1)
