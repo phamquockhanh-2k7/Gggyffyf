@@ -58,10 +58,8 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
         return False
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Xóa tin nhắn lệnh của người dùng
-    try: await update.message.delete()
-    except: pass
-
+    # ĐÃ XÓA: Đoạn code tự xóa tin nhắn /start của người dùng
+    
     if not update.message or not await check_channel_membership(update, context): return
     
     user_id = update.effective_user.id
@@ -78,11 +76,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if args:
         command = args[0]
         
-        # --- LOGIC XỬ LÝ LINK REFERRAL ---
+        # --- LOGIC REFERRAL ---
         if command.startswith("ref_"):
             referrer_id = command.split("_")[1]
-            
-            # Tạo sẵn bộ nút bấm (Bạn có thể thay đổi text và link ở đây)
             keyboard = [
                 [InlineKeyboardButton("LINK FREE CHO BẠN :V ", url="https://t.me/upbaiviet_bot?start=0401202641jO9Rl")],
                 [InlineKeyboardButton("Thêm Link này nữa 😘", url="https://t.me/upbaiviet_robot?start=BQADAQADyRQAAly12EaVCMPUmDCWMhYE")]
@@ -92,31 +88,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if existing_user_data is None:
                 if referrer_id != str(user_id):
                     await add_credit(referrer_id)
-                    # Trường hợp 1: Người mới giúp người mời thành công
-                    await update.message.reply_text(
-                        "🎉 Bạn đã giúp người giới thiệu có thêm 1 lượt tải!",
-                        reply_markup=reply_markup
-                    )
+                    await update.message.reply_text("🎉 Bạn đã giúp người giới thiệu có thêm 1 lượt tải!", reply_markup=reply_markup)
                 else:
-                    # Trường hợp 2: Tự mời chính mình
-                    await update.message.reply_text(
-                        "⚠️ Bạn không thể tự mời chính mình.",
-                        reply_markup=reply_markup
-                    )
+                    await update.message.reply_text("⚠️ Bạn không thể tự mời chính mình.", reply_markup=reply_markup)
             else:
-                # Trường hợp 3: Người cũ nhấn lại link ref
-                await update.message.reply_text(
-                    "👋 Bạn đã từng giúp rồi, Chào mừng bạn quay trở lại!",
-                    reply_markup=reply_markup
-                )
+                await update.message.reply_text("👋 Chào mừng bạn quay trở lại!", reply_markup=reply_markup)
             
-            # Tin nhắn hiển thị số dư lượt tải (cũng có thể kèm nút nếu bạn muốn)
-            await update.message.reply_text(
-                f"Bạn hiện đang có {current_credits} lượt lưu nội dung.",
-                reply_markup=reply_markup # Thêm vào đây nếu muốn dòng này cũng có nút
-            )
+            await update.message.reply_text(f"Bạn hiện đang có {current_credits} lượt lưu nội dung.")
             return
 
+        # --- LOGIC LẤY VIDEO ---
         alias = command
         url = f"{FIREBASE_URL}/{alias}.json"
         try:
@@ -130,16 +111,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     elif item["type"] == "video": media_group.append(InputMediaVideo(item["file_id"]))
                     elif item["type"] == "text": text_content.append(item["file_id"])
                 
-                msgs_to_delete = []
+                # Biến lưu tin nhắn của Bot để xóa sau 24h (chứ không xóa tin của User)
+                bot_msgs_to_delete = []
 
                 if text_content: 
                     t_msg = await update.message.reply_text("\n\n".join(text_content), protect_content=protect)
-                    msgs_to_delete.append(t_msg)
+                    bot_msgs_to_delete.append(t_msg)
                 
                 if media_group:
                     for i in range(0, len(media_group), 10):
                         batch = await update.message.reply_media_group(media_group[i:i+10], protect_content=protect)
-                        msgs_to_delete.extend(batch)
+                        bot_msgs_to_delete.extend(batch)
                         await asyncio.sleep(0.5)
 
                 keyboard = [
@@ -151,24 +133,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "📌 Video sẽ được xóa sau 24h.\nNội dung được bảo vệ chống sao chép.\nNhấn nút dưới để tải (yêu cầu lượt tải).",
                     reply_markup=InlineKeyboardMarkup(keyboard)
                 )
-                msgs_to_delete.append(info_msg)
+                bot_msgs_to_delete.append(info_msg)
 
-                for m in msgs_to_delete:
+                # Hẹn giờ xóa tin nhắn CỦA BOT
+                for m in bot_msgs_to_delete:
                     context.job_queue.run_once(delete_msg_job, 86400, data=m.message_id, chat_id=update.effective_chat.id)
 
             else: 
                 await update.message.reply_text("❌ Liên kết không tồn tại hoặc đã bị xóa.")
         except Exception as e: 
             print(f"Lỗi Start: {e}")
-            await update.message.reply_text("🔒 Hệ thống đang bận, vui lòng quay lại sau.")
+            await update.message.reply_text("🔒 Hệ thống đang bận.")
     else:
         await update.message.reply_text("📥 Chào mừng! Gửi lệnh /newlink để bắt đầu tạo liên kết lưu trữ.")
 
 async def newlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try: await update.message.delete()
-    except: pass
-
+    # ĐÃ XÓA: Code xóa lệnh /newlink
+    
     if not update.message or not await check_channel_membership(update, context): return
+    
     user_id = update.effective_user.id
     context.user_data['current_mode'] = 'STORE'
     with data_lock:
@@ -177,10 +160,9 @@ async def newlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Đã vào chế độ lưu trữ. Hãy gửi Ảnh/Video, xong nhắn /done.")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Nếu không phải trong chế độ lưu trữ, xóa luôn tin nhắn lạ cho sạch bot
+    # --- ĐOẠN QUAN TRỌNG NHẤT ĐÃ SỬA ---
+    # Nếu không phải chế độ STORE, thì bỏ qua (return) chứ KHÔNG XÓA tin nhắn nữa.
     if context.user_data.get('current_mode') != 'STORE':
-        try: await update.message.delete()
-        except: pass
         return 
 
     user_id = update.effective_user.id
@@ -190,13 +172,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update.message.photo: entry = {"file_id": update.message.photo[-1].file_id, "type": "photo"}
         elif update.message.video: entry = {"file_id": update.message.video.file_id, "type": "video"}
         elif update.message.text: entry = {"file_id": update.message.text, "type": "text"}
+        
         if entry and entry not in user_files[user_id]:
             user_files[user_id].append(entry)
 
 async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try: await update.message.delete()
-    except: pass
-
+    # ĐÃ XÓA: Code xóa lệnh /done
+    
     if context.user_data.get('current_mode') != 'STORE': return
     user_id = update.effective_user.id
     with data_lock:
@@ -217,9 +199,8 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['current_mode'] = None
 
 async def sigmaboy(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try: await update.message.delete()
-    except: pass
-
+    # ĐÃ XÓA: Code xóa lệnh /sigmaboy
+    
     if not update.message or not await check_channel_membership(update, context): return
     user_id = update.effective_user.id
     args = context.args
