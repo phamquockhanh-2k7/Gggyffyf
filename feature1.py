@@ -129,7 +129,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ]
                 
                 info_msg = await update.message.reply_text(
-                    "📌 Video sẽ được xóa sau 24h.\nNội dung được bảo vệ chống sao chép.\nNhấn nút dưới để tải (yêu cầu lượt tải).",
+                    "📌Admin thường xuyên gửi Video FREE cho người dùng thông qua BOT.\nNếu bạn xóa tin nhắn bot thì cũng đừng chặn(chỉ xóa) nhé để tránh lạc mất nhau \nNhấn nút dưới để tải (yêu cầu lượt tải).",
                     reply_markup=InlineKeyboardMarkup(keyboard)
                 )
                 msgs_to_delete.append(info_msg)
