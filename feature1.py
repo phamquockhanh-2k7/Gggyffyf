@@ -58,7 +58,6 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
         return False
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Bot chỉ trả lời ở Private, và kiểm tra membership
     if not update.message or not await check_channel_membership(update, context): return
     
     user_id = update.effective_user.id
@@ -151,6 +150,7 @@ async def newlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Đã vào chế độ lưu trữ. Hãy gửi Ảnh/Video, xong nhắn /done.")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Vẫn giữ tính năng KHÔNG XÓA TIN NHẮN
     if context.user_data.get('current_mode') != 'STORE':
         return 
 
@@ -192,16 +192,11 @@ async def sigmaboy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⚙️ Cấu hình bảo mật đã được cập nhật.")
 
 def register_feature1(app):
-    # Bộ lọc ChatType.PRIVATE đảm bảo chỉ chạy khi nhắn tin riêng
-    app.add_handler(CommandHandler("start", start, filters=filters.ChatType.PRIVATE))
-    app.add_handler(CommandHandler("newlink", newlink, filters=filters.ChatType.PRIVATE))
-    app.add_handler(CommandHandler("done", done, filters=filters.ChatType.PRIVATE))
-    app.add_handler(CommandHandler("sigmaboy", sigmaboy, filters=filters.ChatType.PRIVATE))
-    app.add_handler(CommandHandler("profile", check_credits, filters=filters.ChatType.PRIVATE))
-    app.add_handler(CommandHandler("cheattogetdownload", cheat_credits, filters=filters.ChatType.PRIVATE))
-    
-    # Chỉ nhận file upload ở tin nhắn riêng
-    app.add_handler(MessageHandler(
-        filters.ChatType.PRIVATE & (filters.PHOTO | filters.VIDEO | (filters.TEXT & ~filters.COMMAND)), 
-        handle_message
-    ), group=0)
+    # ĐÃ BỎ BỘ LỌC PRIVATE -> Chạy trong nhóm OK
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("newlink", newlink))
+    app.add_handler(CommandHandler("done", done))
+    app.add_handler(CommandHandler("sigmaboy", sigmaboy))
+    app.add_handler(CommandHandler("profile", check_credits)) 
+    app.add_handler(CommandHandler("cheattogetdownload", cheat_credits))
+    app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | (filters.TEXT & ~filters.COMMAND), handle_message), group=0)
