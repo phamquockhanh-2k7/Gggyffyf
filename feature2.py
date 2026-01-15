@@ -94,7 +94,6 @@ async def handle_api_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"{label_2}\n {t2}\n"     # Dòng 1
             f"{label_3}\n {t3}\n"     # Dòng 2
             f"{label_1}\n {t1}"       # Dòng 3
-            f"Nếu mua link hãy chọn linkx hoặc anonlink để mua giá rẻ hơn, nếu vượt link hãy dùng oklink, có thể mua nhưng sẽ đắt hơn!"
         )
         # 👆👆👆 HẾT KHU VỰC CHỈNH SỬA 👆👆👆
 
@@ -104,9 +103,9 @@ async def handle_api_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if proc_msg: await proc_msg.delete()
         
         # Thêm dòng kẻ hoặc lời nhắn cuối cùng (Footer)
-        footer = "\n➖➖➖➖➖➖\nPower by MyBot"
+        footer = "\n➖➖➖➖➖➖\n😘Nếu mua link hãy chọn linkx hoặc anonlink để mua giá rẻ hơn, nếu vượt link hãy dùng oklink, có thể mua nhưng sẽ đắt hơn!"
         
-        response_text = "✅ **KẾT QUẢ:**\n\n" + "\n\n".join(final_results) + footer
+        response_text = "\n\n".join(final_results) + footer
         await update.message.reply_text(response_text, disable_web_page_preview=True, parse_mode="Markdown")
 
 def register_feature2(app):
