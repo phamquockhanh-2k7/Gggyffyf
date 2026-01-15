@@ -118,7 +118,16 @@ async def send_to_full_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==============================================================================
 # ĐĂNG KÝ
 # ==============================================================================
+# ...(Giữ nguyên các hàm import và hàm xử lý logic bên trên)...
+# CHỈ SỬA ĐOẠN CUỐI CÙNG NÀY THÔI:
+
+# ==============================================================================
+# ĐĂNG KÝ
+# ==============================================================================
 def register_feature4(app):
+    # Sự kiện này bắt buộc phải chạy ở nhóm (để bắt người xin vào nhóm) nên KHÔNG thêm filter Private
     app.add_handler(ChatJoinRequestHandler(collect_id_silent))
-    app.add_handler(CommandHandler("FullIn4", check_full_info))
-    app.add_handler(CommandHandler("sendtofullin4", send_to_full_info))
+    
+    # Nhưng lệnh xem báo cáo thì PHẢI là tin nhắn riêng (để không lộ thông tin trong nhóm)
+    app.add_handler(CommandHandler("FullIn4", check_full_info, filters=filters.ChatType.PRIVATE))
+    app.add_handler(CommandHandler("sendtofullin4", send_to_full_info, filters=filters.ChatType.PRIVATE))
