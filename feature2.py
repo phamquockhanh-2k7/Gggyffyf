@@ -79,14 +79,18 @@ async def handle_api_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text(f"🔗 Gốc: {url}", disable_web_page_preview=True)
 
         # --- CHUẨN BỊ TIN NHẮN 2: NỘI DUNG COPY ---
-        label_1 = "Link vượt: "         
-        label_2 = "Link mua: (rẻ hơn )" 
-        label_3 = "Link mua:"           
+        label_1 = "**Link vượt: **"         
+        label_2 = "**Link mua: (rẻ hơn )**" 
+        label_3 = "**Link mua:**"           
 
         # 👇 Đây là đoạn Footer bạn cần 👇
-        footer = "\n➖➖➖➖➖➖\n😘Nếu mua link hãy chọn linkx hoặc anonlink để mua giá rẻ hơn, nếu vượt link hãy dùng oklink, có thể mua nhưng sẽ đắt hơn!"
-
-        # Ghép Link + Footer vào nội dung copy
+        # 👇 ĐOẠN FOOTER ĐÃ SỬA CHUẨN 👇
+        footer = (
+            "\n➖➖➖➖➖➖\n"
+            "<b>😘Nếu mua link hãy chọn linkx hoặc anonlink để mua giá rẻ hơn, nếu vượt link hãy dùng oklink, có thể mua nhưng sẽ đắt hơn!</b>\n\n"
+            "<b>Cách vượt Link:</b> https://t.me/upbaiviet_robot?start=BQADAQADaAoAArCTQEdcuTQeEAQaWxYE\n\n"
+            "<b>Cách Mua link:</b> https://t.me/upbaiviet_robot?start=BQADAQADdAoAArCTQEd1zU69QpPMShYE"
+        )
         content_to_copy = (
             f"{label_2}\n {t2}\n"
             f"{label_3}\n {t3}\n"
