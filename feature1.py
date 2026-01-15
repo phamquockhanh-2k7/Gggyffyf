@@ -11,7 +11,7 @@ from telegram.ext import (
     CommandHandler, MessageHandler, ContextTypes, filters
 )
 
-# Import các hàm từ feature3
+# Import từ feature3
 from feature3 import init_user_if_new, add_credit, delete_msg_job, get_credits, check_credits, cheat_credits
 
 # Firebase URL
@@ -58,8 +58,6 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
         return False
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ĐÃ XÓA LỆNH DELETE Ở ĐÂY
-    
     if not update.message or not await check_channel_membership(update, context): return
     
     user_id = update.effective_user.id
@@ -75,11 +73,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if args:
         command = args[0]
-        
-        # --- LOGIC XỬ LÝ LINK REFERRAL ---
         if command.startswith("ref_"):
             referrer_id = command.split("_")[1]
-            
             keyboard = [
                 [InlineKeyboardButton("LINK FREE CHO BẠN :V ", url="https://t.me/upbaiviet_bot?start=0401202641jO9Rl")],
                 [InlineKeyboardButton("Thêm Link này nữa 😘", url="https://t.me/upbaiviet_robot?start=BQADAQADyRQAAly12EaVCMPUmDCWMhYE")]
@@ -134,7 +129,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 msgs_to_delete.append(info_msg)
 
-                # Chỉ xóa tin nhắn CỦA BOT, không xóa của user
                 for m in msgs_to_delete:
                     context.job_queue.run_once(delete_msg_job, 86400, data=m.message_id, chat_id=update.effective_chat.id)
 
@@ -147,8 +141,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("📥 Chào mừng! Gửi lệnh /newlink để bắt đầu tạo liên kết lưu trữ.")
 
 async def newlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ĐÃ XÓA LỆNH DELETE Ở ĐÂY
-
     if not update.message or not await check_channel_membership(update, context): return
     user_id = update.effective_user.id
     context.user_data['current_mode'] = 'STORE'
@@ -158,7 +150,7 @@ async def newlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Đã vào chế độ lưu trữ. Hãy gửi Ảnh/Video, xong nhắn /done.")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ĐÃ SỬA: Nếu không phải chế độ STORE thì return luôn, KHÔNG XÓA TIN NHẮN
+    # KHÔNG XÓA TIN NHẮN - CHỈ BỎ QUA NẾU KO PHẢI CHẾ ĐỘ STORE
     if context.user_data.get('current_mode') != 'STORE':
         return 
 
@@ -173,8 +165,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_files[user_id].append(entry)
 
 async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ĐÃ XÓA LỆNH DELETE Ở ĐÂY
-
     if context.user_data.get('current_mode') != 'STORE': return
     user_id = update.effective_user.id
     with data_lock:
@@ -195,8 +185,6 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['current_mode'] = None
 
 async def sigmaboy(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ĐÃ XÓA LỆNH DELETE Ở ĐÂY
-
     if not update.message or not await check_channel_membership(update, context): return
     user_id = update.effective_user.id
     args = context.args
@@ -204,10 +192,19 @@ async def sigmaboy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⚙️ Cấu hình bảo mật đã được cập nhật.")
 
 def register_feature1(app):
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("newlink", newlink))
-    app.add_handler(CommandHandler("done", done))
-    app.add_handler(CommandHandler("sigmaboy", sigmaboy))
-    app.add_handler(CommandHandler("profile", check_credits)) 
-    app.add_handler(CommandHandler("cheattogetdownload", cheat_credits))
-    app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | (filters.TEXT & ~filters.COMMAND), handle_message), group=0)
+    # --- QUAN TRỌNG: THÊM filters.ChatType.PRIVATE VÀO MỌI LỆNH ---
+    # Điều này bắt buộc người dùng phải nhắn riêng với Bot mới dùng được lệnh.
+    # Trong nhóm chat, các lệnh này sẽ VÔ HIỆU.
+    
+    app.add_handler(CommandHandler("start", start, filters=filters.ChatType.PRIVATE))
+    app.add_handler(CommandHandler("newlink", newlink, filters=filters.ChatType.PRIVATE))
+    app.add_handler(CommandHandler("done", done, filters=filters.ChatType.PRIVATE))
+    app.add_handler(CommandHandler("sigmaboy", sigmaboy, filters=filters.ChatType.PRIVATE))
+    app.add_handler(CommandHandler("profile", check_credits, filters=filters.ChatType.PRIVATE))
+    app.add_handler(CommandHandler("cheattogetdownload", cheat_credits, filters=filters.ChatType.PRIVATE))
+    
+    # Chỉ xử lý file upload ở tin nhắn riêng tư
+    app.add_handler(MessageHandler(
+        filters.ChatType.PRIVATE & (filters.PHOTO | filters.VIDEO | (filters.TEXT & ~filters.COMMAND)), 
+        handle_message
+    ), group=0)
