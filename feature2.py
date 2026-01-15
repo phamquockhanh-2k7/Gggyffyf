@@ -12,11 +12,11 @@ from feature1 import check_channel_membership
 API_KEY_1 = "5d2e33c19847dea76f4fdb49695fd81aa669af86"
 API_URL_1 = "https://oklink.cfd/api"
 
-# 2. LinkX (Note API)
+# 2. LinkX (ĐÃ SỬA: Dùng API rút gọn chuẩn)
 API_KEY_2 = "4a06a2345a0e4ca098f9bf7b37a246439d5912e5"
-API_URL_2 = "https://linkx.me/note-api"
+API_URL_2 = "https://linkx.me/api"  # Đổi từ /note-api thành /api
 
-# 3. AnonLink (Mới thêm)
+# 3. AnonLink
 API_KEY_3 = "b0bb16d8f14caaf4bfb6f8a0cceac1a8ee5e9668"
 API_URL_3 = "https://anonlink.io/api"
 
@@ -35,10 +35,13 @@ async def get_short_oklink(long_url: str) -> str:
     except: return "Lỗi kết nối Oklink"
 
 async def get_short_linkx(long_url: str) -> str:
-    """Rút gọn bằng LinkX"""
+    """Rút gọn bằng LinkX (Chuẩn Shortener)"""
     if not long_url.startswith(("http://", "https://")): long_url = "https://" + long_url
     encoded_url = urllib.parse.quote(long_url)
-    url = f"{API_URL_2}?api={API_KEY_2}&content={encoded_url}&format=text"
+    
+    # SỬA LỖI Ở ĐÂY: Dùng tham số 'url' thay vì 'content'
+    url = f"{API_URL_2}?api={API_KEY_2}&url={encoded_url}&format=text"
+    
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, timeout=10) as resp:
@@ -49,7 +52,6 @@ async def get_short_anonlink(long_url: str) -> str:
     """Rút gọn bằng AnonLink"""
     if not long_url.startswith(("http://", "https://")): long_url = "https://" + long_url
     encoded_url = urllib.parse.quote(long_url)
-    # Cấu trúc API AnonLink: api + url + format=text
     url = f"{API_URL_3}?api={API_KEY_3}&url={encoded_url}&format=text"
     try:
         async with aiohttp.ClientSession() as session:
@@ -85,7 +87,7 @@ async def handle_api_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
     final_results = []
     
     for url in urls:
-        # Chạy song song 3 tác vụ
+        # Chạy song song 3 tác vụ bất đồng bộ
         task1 = asyncio.create_task(get_short_oklink(url))
         task2 = asyncio.create_task(get_short_linkx(url))
         task3 = asyncio.create_task(get_short_anonlink(url))
