@@ -6,7 +6,7 @@ from telegram import Update
 from telegram.ext import CommandHandler, MessageHandler, ContextTypes, filters
 from feature1 import check_channel_membership
 
-# --- CẤU HÌNH API (Giữ nguyên) ---
+# --- CẤU HÌNH API ---
 API_KEY_1 = "5d2e33c19847dea76f4fdb49695fd81aa669af86"
 API_URL_1 = "https://oklink.cfd/api"
 API_KEY_2 = "4a06a2345a0e4ca098f9bf7b37a246439d5912e5"
@@ -15,7 +15,7 @@ API_KEY_3 = "b0bb16d8f14caaf4bfb6f8a0cceac1a8ee5e9668"
 API_URL_3 = "https://anonlink.io/api"
 URL_PATTERN = r'(https?://\S+|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\S*)'
 
-# --- CÁC HÀM RÚT GỌN (Giữ nguyên) ---
+# --- CÁC HÀM RÚT GỌN ---
 async def get_short_oklink(long_url: str) -> str:
     if not long_url.startswith(("http://", "https://")): long_url = "https://" + long_url
     encoded_url = urllib.parse.quote(long_url)
@@ -91,13 +91,7 @@ async def handle_api_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await asyncio.sleep(0.5)
 
 def register_feature2(app):
-    # --- QUAN TRỌNG: Lọc tin nhắn Private ---
-    # Lệnh /api chỉ chạy trong tin nhắn riêng
+    # Lệnh /api chỉ chạy Private
     app.add_handler(CommandHandler("api", api_command, filters=filters.ChatType.PRIVATE))
-    
-    # Tính năng bắt link cũng CHỈ chạy trong tin nhắn riêng
-    # Nếu ai đó gửi link trong nhóm, Bot sẽ LƠ ĐI.
-    app.add_handler(MessageHandler(
-        filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND, 
-        handle_api_message
-    ), group=1)
+    # Bắt link cũng chỉ chạy Private
+    app.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND, handle_api_message), group=1)
