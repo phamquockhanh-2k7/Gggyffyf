@@ -4,6 +4,7 @@ from keep_alive import keep_alive
 from feature1 import register_feature1
 from feature2 import register_feature2
 from feature3 import register_feature3
+from feature4 import register_feature4
 
 BOT_TOKEN = "7851783179:AAFu58Cs9w1Z7i-xU4pPhnISgg0Sq3vfaPs"
 
@@ -17,6 +18,7 @@ def main():
     register_feature1(app)
     register_feature2(app)
     register_feature3(app)
+    register_feature4(application)
 
     print("🤖 Bot is running...")
     app.run_polling()
