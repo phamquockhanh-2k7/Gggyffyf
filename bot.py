@@ -18,7 +18,7 @@ TOKEN_MAIN = "7851783179:AAFu58Cs9w1Z7i-xU4pPhnISgg0Sq3vfaPs"
 
 # 2. Token Bot Phụ (Con mới - Chuyên SOS, Quản lý người vào nhóm)
 # 👉 Vào BotFather tạo con mới, rồi dán Token của nó vào dưới đây:
-TOKEN_SOS  = "7773089881:AAFv6vyOhy1uEPTn8T4E02MeYvvet3kutlg" 
+TOKEN_SOS  = "7773089881:AAGfT6xJztiH9zSjm6rKgvKBo53qJE84uo0" 
 
 # ==============================================================================
 # ⚙️ HÀM CHẠY 2 BOT CÙNG LÚC (KHÔNG CẦN SỬA)
