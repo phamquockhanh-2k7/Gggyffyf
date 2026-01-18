@@ -71,7 +71,7 @@ async def open_task_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Check ngày
     if await check_daily_task_status(user_id):
-        await context.bot.send_message(chat_id=user_id, text="⚠️ <b>HẾT LƯỢT HÔM NAY!</b>\nMai quay lại nhé.", parse_mode="HTML")
+        await context.bot.send_message(chat_id=user_id, text="⚠️ <b>Bạn đã nhận hôm nay rồi!</b>\nQuay lại vào 0h ngày mai nhé :3.", parse_mode="HTML")
         return
 
     # MENU GỐC: Chỉ hiện Bước 1 (Dạng Callback để track) và Bước 2
@@ -166,11 +166,11 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # --- HẾT LƯỢT ---
         if credits <= 0:
-            await query.answer(text="❌ Hết lượt tải miễn phí!", show_alert=True)
+            await query.answer(text="❌ Hết lượt tải miễn phí!, hãy đăng nhập hằng ngày hoặc chia sẻ để lấy thêm !", show_alert=True)
             
             ref_link = f"https://t.me/{context.bot.username}?start=ref_{user_id}"
             share_text = "--VideoHot--"
-            msg = "<b>⛔️ HẾT LƯỢT LƯU!</b>\nChọn cách nhận thêm lượt:"
+            msg = "<b>⛔️Huhu, hết lượt lưu rồi!</b>\nKiếm thêm ngay :"
             
             keyboard = [
                 [InlineKeyboardButton("🔗 Chia sẻ (+1 lượt/người)", url=f"https://t.me/share/url?url={ref_link}&text={share_text}")],
