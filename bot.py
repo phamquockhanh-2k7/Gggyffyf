@@ -23,7 +23,8 @@ SOS_TOKENS = [
     "7773089881:AAGfT6xJztiH9zSjm6rKgvKBo53qJE84uo0",  # Laucuadong01_bot
     "8004443054:AAHTKzluiWBCV-VeCljiGoEFkOMW94NmzQU",                             # daihoc69bot
     "7713949546:AAG-4EUiekIdxs6zCVVfxlZCPGrh31BnUkw",                             # xclassvnvip_bot
-    "7473854195:AAFhXs8euDsYVZanx_A25MC_zIsaS_d_su8"                              # hoahocduong_bbot
+    "7473854195:AAFhXs8euDsYVZanx_A25MC_zIsaS_d_su8",# hoahocduong_bbot
+    "8332572670:AAEFwN0B2BNeitWJg2tn2YvDOLPpxjLZ4GU"# hoichancuu01_bot
 ]
 
 # ==============================================================================
