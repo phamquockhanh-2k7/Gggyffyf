@@ -106,9 +106,9 @@ async def handle_api_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         footer = (
             "\n➖➖➖➖➖➖\n"
-            "<b>😘Nếu mua link hãy chọn linkx hoặc anonlink để mua giá rẻ hơn, nếu vượt link hãy dùng oklink, có thể mua nhưng sẽ đắt hơn!</b>\n\n"
-            "<b>Cách vượt Link:</b> https://t.me/upbaiviet_robot?start=BQADAQADaAoAArCTQEdcuTQeEAQaWxYE\n\n"
-            "<b>Cách Mua link:</b> https://t.me/upbaiviet_robot?start=BQADAQADdAoAArCTQEd1zU69QpPMShYE"
+            "**😘Nếu mua link hãy chọn linkx hoặc anonlink để mua giá rẻ hơn, nếu vượt link hãy dùng oklink, có thể mua nhưng sẽ đắt hơn!**\n\n"
+            "**Cách vượt Link:** https://t.me/upbaiviet_robot?start=BQADAQADaAoAArCTQEdcuTQeEAQaWxYE\n\n"
+            "**Cách Mua link:** https://t.me/upbaiviet_robot?start=BQADAQADdAoAArCTQEd1zU69QpPMShYE"
         )
         
         content_to_copy = (
