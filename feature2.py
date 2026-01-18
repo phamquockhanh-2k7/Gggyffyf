@@ -92,10 +92,10 @@ async def handle_api_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"**Link mua: (rẻ hơn )**\n {t2}\n"
             f"**Link mua:**\n {t3}\n"
             f"**Link vượt: **\n {t1}\n"
-            f"➖➖➖➖➖➖\n"
+            f"➖➖➖➖➖➖➖➖➖➖\n"
             f"**😘Nếu mua link hãy chọn linkx hoặc anonlink để mua giá rẻ hơn, nếu vượt link hãy dùng oklink, có thể mua nhưng sẽ đắt hơn! **\n\n"
-            f"**Cách vượt Link: ** https://t.me/upbaiviet_robot?start=BQADAQADaAoAArCTQEdcuTQeEAQaWxYE\n\n"
-            f"**Cách Mua link: ** https://t.me/upbaiviet_robot?start=BQADAQADdAoAArCTQEd1zU69QpPMShYE"
+            f"**Cách vượt Link: ** HuongDanVuotLink.vercel.app\n\n"
+            f"**Cách Mua link: ** HuongDanMuaLink.vercel.app \n\n**⫸Lưu lại link này để tránh lạc mất nhau: **LinkDuPhongSOS.vercel.app 🥰"
         )
         
         # Sử dụng thẻ <pre> của HTML để tạo khối Code Block
