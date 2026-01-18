@@ -118,10 +118,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         msgs_to_delete.extend(batch)
                         await asyncio.sleep(0.5)
 
+                # --- ĐÂY LÀ PHẦN ĐÃ THÊM NÚT NHẬN LƯỢT ---
                 keyboard = [
+                    # Nút 1: Tải Video
                     [InlineKeyboardButton(f"📥 Tải video (còn {current_credits} lượt)", callback_data=f"dl_{alias}")],
-                    [InlineKeyboardButton("🔗 Chia sẻ nhận thêm lượt", url=full_share_url)]
+                    # Nút 2: Chia sẻ
+                    [InlineKeyboardButton("🔗 Chia sẻ nhận thêm lượt", url=full_share_url)],
+                    # Nút 3: NHIỆM VỤ HÀNG NGÀY (MỚI THÊM)
+                    [InlineKeyboardButton("🎁 Nhận 1 lượt mỗi ngày", callback_data="task_open")]
                 ]
+                # -----------------------------------------
                 
                 info_msg = await update.message.reply_text(
                     "📌 Video sẽ được xóa sau 24h.\nNội dung được bảo vệ chống sao chép.\nNhấn nút dưới để tải (yêu cầu lượt tải).",
