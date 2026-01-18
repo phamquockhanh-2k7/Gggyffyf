@@ -71,14 +71,14 @@ async def open_task_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Check ngày
     if await check_daily_task_status(user_id):
-        await context.bot.send_message(chat_id=user_id, text="⚠️ <b>Bạn đã nhận hôm nay rồi!</b>\nQuay lại vào 0h ngày mai nhé :3.", parse_mode="HTML")
+        await context.bot.send_message(chat_id=user_id, text="⚠️ <b>Bạn đã nhận hôm nay rồi!</b>\nQuay lại vào sáng ngày mai nhé :3.", parse_mode="HTML")
         return
 
     # MENU GỐC: Chỉ hiện Bước 1 (Dạng Callback để track) và Bước 2
     msg = (
         "<b>🎁 NHẬN 1 LƯỢT LƯU MIỄN PHÍ</b>\n\n"
-        "👇 <b>Yêu cầu:</b>\n"
-        "1️⃣ Ấn nút 'Lấy Link' bên dưới.\n"
+        "👇 <b>Yêu cầu tham gia kênh dưới đây:</b>\n"
+        "1️⃣ Ấn nút 'Lấy Link Tham Gia' bên dưới để lấy link tham gia kênh.\n"
         "2️⃣ Tham gia kênh và quay lại ấn 'Xác nhận'."
     )
     
@@ -105,14 +105,14 @@ async def handle_task_actions(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         # 2. HIỆN LINK KÊNH + NÚT XÁC NHẬN
         msg = (
-            "🔗 <b>LINK KÊNH TÀI TRỢ:</b>\n\n"
-            "Hãy ấn vào nút <b>'Tham gia ngay'</b> bên dưới để vào kênh.\n"
-            "Sau đó ấn <b>'Xác nhận'</b> để nhận lượt."
+            "🔗 <b>Tham gia kênh dưới đây:</b>\n\n"
+            "Hãy ấn vào nút <b>'🚀 Tham gia ngay'</b> bên dưới để vào kênh.\n"
+            "Sau đó ấn <b>'Xác nhận'</b> để nhận lượt lưu."
         )
         
         keyboard = [
             # Nút này là URL (Link đơn thuần) -> Theo đúng ý bạn
-            [InlineKeyboardButton("🚀 Tham gia ngay (Click)", url=LINK_NHIEM_VU)],
+            [InlineKeyboardButton("🚀 Tham gia ngay ", url=f"https://t.me/+FLoRiJiPtUJhNjhl")],
             # Nút xác nhận vẫn giữ nguyên
             [InlineKeyboardButton("✅ Bước 2: Xác nhận đã vào", callback_data="task_confirm")]
         ]
@@ -124,7 +124,7 @@ async def handle_task_actions(update: Update, context: ContextTypes.DEFAULT_TYPE
     elif data == "task_confirm":
         # 1. CHECK RAM (Quan trọng: Phải ấn Bước 1 ở trên rồi mới có dữ liệu này)
         if not temp_click_tracker.get(user_id):
-            await context.bot.send_message(chat_id=user_id, text="❌ <b>Lỗi:</b> Bạn chưa ấn <b>'Bước 1: Lấy Link'</b>!", parse_mode="HTML")
+            await context.bot.send_message(chat_id=user_id, text="❌ <b>Lỗi:</b> Bạn chưa tham gia kênh <b>'Bước 1: Lấy Link Tham Gia'</b>!", parse_mode="HTML")
             
             # Gửi lại Menu gốc để họ làm lại từ đầu
             keyboard = [
