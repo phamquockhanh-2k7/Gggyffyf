@@ -1,5 +1,6 @@
 import asyncio
 import threading
+from telegram import Update
 from telegram.ext import ApplicationBuilder
 from keep_alive import keep_alive
 
@@ -10,51 +11,81 @@ from feature3 import register_feature3
 from feature4 import register_feature4
 
 # ==============================================================================
-# 🔴 CẤU HÌNH TOKEN (QUAN TRỌNG NHẤT)
+# 🔴 CẤU HÌNH TOKEN CHO 5 CON BOT
 # ==============================================================================
 
-# 1. Token Bot Chính (Con cũ - Chuyên Video, Link rút gọn, Spam nhóm)
-TOKEN_MAIN = "7851783179:AAFu58Cs9w1Z7i-xU4pPhnISgg0Sq3vfaPs" 
+# 1. BOT CHÍNH (Video, Link, Spam)
+TOKEN_MAIN  = "7851783179:AAFu58Cs9w1Z7i-xU4pPhnISgg0Sq3vfaPs" 
 
-# 2. Token Bot Phụ (Con mới - Chuyên SOS, Quản lý người vào nhóm)
-# 👉 Vào BotFather tạo con mới, rồi dán Token của nó vào dưới đây:
-TOKEN_SOS  = "7773089881:AAGfT6xJztiH9zSjm6rKgvKBo53qJE84uo0" 
+# 2. DANH SÁCH 4 BOT SOS (Dự phòng, Bắt ID)
+# 👉 Bạn dán Token của 4 con Bot phụ vào giữa dấu ngoặc kép ""
+SOS_TOKENS = [
+    "7773089881:AAGfT6xJztiH9zSjm6rKgvKBo53qJE84uo0",  # Laucuadong01_bot
+    "8004443054:AAHTKzluiWBCV-VeCljiGoEFkOMW94NmzQU",                             # daihoc69bot
+    "7713949546:AAG-4EUiekIdxs6zCVVfxlZCPGrh31BnUkw",                             # xclassvnvip_bot
+    "7473854195:AAFhXs8euDsYVZanx_A25MC_zIsaS_d_su8"                              # hoahocduong_bbot
+]
 
 # ==============================================================================
-# ⚙️ HÀM CHẠY 2 BOT CÙNG LÚC (KHÔNG CẦN SỬA)
+# ⚙️ HÀM KHỞI TẠO VÀ CHẠY NHIỀU BOT
 # ==============================================================================
-async def run_dual_bots():
-    print("🔄 Đang khởi động hệ thống Song Bot...")
-
-    # --- SETUP BOT 1: BOT CHÍNH (VIDEO & SPAM) ---
-    print("🛠 Đang cài đặt Bot Chính...")
-    app_main = ApplicationBuilder().token(TOKEN_MAIN).build()
-    register_feature1(app_main) # Start, Upload, Store
-    register_feature2(app_main) # Rút gọn link (Spam thoải mái)
-    register_feature3(app_main) # Xử lý nút tải, credit
-    print("✅ Bot Chính: Đã sẵn sàng!")
-
-    # --- SETUP BOT 2: BOT PHỤ (SOS SYSTEM) ---
-    print("🛠 Đang cài đặt Bot SOS...")
-    app_sos = ApplicationBuilder().token(TOKEN_SOS).build()
-    register_feature4(app_sos)  # Chỉ chạy tính năng lưu ID & gửi tin hàng loạt
-    print("✅ Bot Phụ (SOS): Đã sẵn sàng!")
-
-    # --- BẮT ĐẦU KÍCH HOẠT ---
-    await app_main.initialize()
-    await app_sos.initialize()
-
-    await app_main.start()
-    await app_sos.start()
-
-    # Kích hoạt lắng nghe (Polling) cho cả 2 con cùng lúc
-    print("🚀 BẮT ĐẦU CHẠY POLLING...")
-    await app_main.updater.start_polling()
-    await app_sos.updater.start_polling()
+async def run_multiple_bots():
+    print(f"🔄 Đang khởi động hệ thống 1 Main + {len(SOS_TOKENS)} SOS...")
     
-    print("🎉 THÀNH CÔNG! 2 BOT ĐANG CHẠY TRÊN CÙNG 1 SERVER.")
+    # Danh sách để lưu các bot đang chạy
+    apps = []
 
-    # Vòng lặp vô tận để giữ chương trình không bị tắt
+    # ---------------------------------------------------------
+    # HÀM PHỤ: CÀI ĐẶT 1 CON BOT
+    # ---------------------------------------------------------
+    async def setup_one_bot(token, name, is_main=False):
+        # Kiểm tra token có hợp lệ không (để tránh lỗi nếu bạn chưa điền đủ)
+        if not token or "TOKEN" in token: 
+            print(f"⚠️ Bỏ qua {name} (Chưa có Token)")
+            return
+
+        print(f"🛠 Đang cài đặt {name}...")
+        try:
+            app = ApplicationBuilder().token(token).build()
+            
+            # --- CÀI TÍNH NĂNG ---
+            if is_main:
+                # Bot chính: Cài full tính năng
+                register_feature1(app) # Upload
+                register_feature2(app) # Link rút gọn
+                register_feature3(app) # Credit
+                register_feature4(app) # Bắt ID
+            else:
+                # Bot SOS: Chỉ cài tính năng bắt ID
+                register_feature4(app) 
+            
+            # Khởi động Bot
+            await app.initialize()
+            await app.start()
+            
+            # Kích hoạt lắng nghe (Bắt buộc có allowed_updates để bắt ID)
+            await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+            
+            apps.append(app)
+            print(f"✅ {name}: Đã chạy thành công!")
+            
+        except Exception as e:
+            print(f"❌ Lỗi cài đặt {name}: {e}")
+
+    # ---------------------------------------------------------
+    # CHẠY LẦN LƯỢT CÁC BOT
+    # ---------------------------------------------------------
+    
+    # 1. Chạy Bot Chính trước
+    await setup_one_bot(TOKEN_MAIN, "BOT CHÍNH (VIDEO)", is_main=True)
+
+    # 2. Chạy vòng lặp cho 4 Bot SOS
+    for i, token in enumerate(SOS_TOKENS):
+        await setup_one_bot(token, f"BOT SOS {i+1}")
+
+    print(f"\n🚀 TỔNG KẾT: ĐANG CHẠY {len(apps)} BOT TRÊN SERVER NÀY.")
+    
+    # Giữ server sống mãi mãi
     while True:
         await asyncio.sleep(1000)
 
@@ -62,11 +93,9 @@ async def run_dual_bots():
 # KHỐI CHẠY CHÍNH
 # ==============================================================================
 if __name__ == '__main__':
-    # 1. Giữ Server sống (cho UptimeRobot)
     t = threading.Thread(target=keep_alive)
     t.start()
     
-    # 2. Chạy hệ thống Bot Async
     try:
         loop = asyncio.get_event_loop()
     except RuntimeError:
@@ -74,6 +103,6 @@ if __name__ == '__main__':
         asyncio.set_event_loop(loop)
         
     try:
-        loop.run_until_complete(run_dual_bots())
+        loop.run_until_complete(run_multiple_bots())
     except KeyboardInterrupt:
         print("🛑 Đã dừng Bot.")
