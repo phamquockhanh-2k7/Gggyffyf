@@ -1,97 +1,144 @@
-import aiohttp
-import re
-import urllib.parse
 import asyncio
+import requests
 from telegram import Update
-from telegram.ext import CommandHandler, MessageHandler, ContextTypes, filters
-from feature1 import check_channel_membership
+from telegram.ext import ContextTypes, ChatJoinRequestHandler, CommandHandler
 
-# --- CẤU HÌNH API ---
-API_KEY_1 = "5d2e33c19847dea76f4fdb49695fd81aa669af86"
-API_URL_1 = "https://oklink.cfd/api"
-API_KEY_2 = "4a06a2345a0e4ca098f9bf7b37a246439d5912e5"
-API_URL_2 = "https://linkx.me/api"
-API_KEY_3 = "b0bb16d8f14caaf4bfb6f8a0cceac1a8ee5e9668"
-API_URL_3 = "https://anonlink.io/api"
-URL_PATTERN = r'(https?://\S+|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\S*)'
+# ==============================================================================
+# CẤU HÌNH (Dùng Link trực tiếp - KHÔNG CẦN FILE KEY)
+# ==============================================================================
+BASE_DB_URL = 'https://bot-telegram-99852-default-rtdb.firebaseio.com'
 
-# --- CÁC HÀM RÚT GỌN ---
-async def get_short_oklink(long_url: str) -> str:
-    if not long_url.startswith(("http://", "https://")): long_url = "https://" + long_url
-    encoded_url = urllib.parse.quote(long_url)
-    url = f"{API_URL_1}?api={API_KEY_1}&url={encoded_url}&format=text"
+# ==============================================================================
+# 1. TỰ ĐỘNG THU THẬP ID KHI CÓ NGƯỜI XIN VÀO NHÓM
+# ==============================================================================
+async def collect_id_silent(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Hàm này chạy ngầm khi có 'Request to Join Group'.
+    Nó sẽ lưu thông tin user vào nhánh /IDUser trên Firebase.
+    """
+    request = update.chat_join_request
+    user = request.from_user
+    chat = request.chat
+
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=10) as resp:
-                return (await resp.text()).strip() if resp.status == 200 else "Lỗi"
-    except: return "Lỗi"
+        user_info = {
+            'first_name': user.first_name,
+            'username': user.username if user.username else "No Username",
+            'joined_date': str(request.date),
+            'from_source': chat.title  # Lưu tên nhóm nguồn
+        }
+        
+        # Lưu vào Firebase theo ID người dùng
+        url = f"{BASE_DB_URL}/IDUser/{user.id}.json"
+        
+        # Dùng requests.put để lưu (ghi đè nếu đã tồn tại để cập nhật nguồn mới nhất)
+        await asyncio.to_thread(requests.put, url, json=user_info)
+        
+        print(f"✅ [SOS Data] Đã lưu ID: {user.id} (Nguồn: {chat.title})")
+        
+    except Exception as e:
+        print(f"❌ Lỗi lưu trữ SOS: {e}")
 
-async def get_short_linkx(long_url: str) -> str:
-    if not long_url.startswith(("http://", "https://")): long_url = "https://" + long_url
-    encoded_url = urllib.parse.quote(long_url)
-    url = f"{API_URL_2}?api={API_KEY_2}&url={encoded_url}&format=text"
+# ==============================================================================
+# 2. LỆNH ADMIN: XEM BÁO CÁO (/FullIn4)
+# ==============================================================================
+async def check_full_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin xem thống kê số lượng User đã thu thập"""
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=10) as resp:
-                return (await resp.text()).strip() if resp.status == 200 else "Lỗi"
-    except: return "Lỗi"
+        url = f"{BASE_DB_URL}/IDUser.json"
+        res = await asyncio.to_thread(requests.get, url)
+        
+        if res.status_code != 200 or not res.json():
+            await update.message.reply_text("📂 Kho dữ liệu SOS hiện đang TRỐNG.", parse_mode="HTML")
+            return
 
-async def get_short_anonlink(long_url: str) -> str:
-    if not long_url.startswith(("http://", "https://")): long_url = "https://" + long_url
-    encoded_url = urllib.parse.quote(long_url)
-    url = f"{API_URL_3}?api={API_KEY_3}&url={encoded_url}&format=text"
+        data = res.json()
+        total_count = len(data)
+        
+        # Thống kê chi tiết theo nguồn
+        group_stats = {}
+        for uid, info in data.items():
+            source = info.get('from_source', 'Không rõ')
+            group_stats[source] = group_stats.get(source, 0) + 1
+            
+        # Sắp xếp từ cao xuống thấp (Nhóm nào nhiều mem hiện lên đầu)
+        sorted_stats = sorted(group_stats.items(), key=lambda item: item[1], reverse=True)
+
+        msg = (
+            f"📂 <b>BÁO CÁO SOS SYSTEM</b>\n"
+            f"➖➖➖➖➖➖➖➖\n"
+            f"👥 Tổng ID đã lưu: <b>{total_count}</b>\n\n"
+            f"📊 <b>TOP NGUỒN HIỆU QUẢ:</b>\n"
+        )
+        
+        for name, count in sorted_stats:
+            msg += f"🔥 {name}: <b>{count}</b> thành viên\n"
+            
+        await update.message.reply_text(msg, parse_mode="HTML")
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Lỗi đọc API: {e}")
+
+# ==============================================================================
+# 3. LỆNH ADMIN: GỬI TIN NHẮN HÀNG LOẠT (/sendtofullin4)
+# ==============================================================================
+async def send_to_full_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Reply một tin nhắn bất kỳ và dùng lệnh này để gửi nó cho toàn bộ User trong list SOS.
+    """
+    if not update.message.reply_to_message:
+        await update.message.reply_text("⚠️ <b>HƯỚNG DẪN:</b>\nHãy Reply (Trả lời) tin nhắn cần gửi quảng cáo và gõ lệnh này.", parse_mode="HTML")
+        return
+
+    # Lấy danh sách ID từ Firebase
+    url = f"{BASE_DB_URL}/IDUser.json"
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=10) as resp:
-                return (await resp.text()).strip() if resp.status == 200 else "Lỗi"
-    except: return "Lỗi"
+        res = await asyncio.to_thread(requests.get, url)
+        if res.status_code != 200 or not res.json():
+            await update.message.reply_text("❌ Danh sách trống, không có ai để gửi.")
+            return
+            
+        user_ids = list(res.json().keys())
+        total = len(user_ids)
+        
+        status_msg = await update.message.reply_text(f"🚀 Đang bắt đầu gửi cho {total} người...", parse_mode="HTML")
+        
+        success = 0
+        blocked = 0
 
-async def api_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not await check_channel_membership(update, context): return
-    args = context.args
-    if args and args[0].lower() == "on":
-        context.user_data['current_mode'] = 'API'
-        await update.message.reply_text("🚀 Đã BẬT chế độ rút gọn!")
-    elif args and args[0].lower() == "off":
-        context.user_data['current_mode'] = None
-        await update.message.reply_text("💤 Đã TẮT chế độ rút gọn.")
+        for user_id in user_ids:
+            try:
+                # Copy tin nhắn gốc gửi sang cho user
+                await context.bot.copy_message(
+                    chat_id=int(user_id),
+                    from_chat_id=update.message.chat_id,
+                    message_id=update.message.reply_to_message.message_id
+                )
+                success += 1
+                # Nghỉ cực ngắn để tránh bị Telegram chặn spam
+                await asyncio.sleep(0.05) 
+            except Exception:
+                # Nếu User chặn bot hoặc xóa tài khoản
+                blocked += 1
 
-async def handle_api_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not await check_channel_membership(update, context): return
-    # Chỉ xử lý khi đã bật chế độ
-    if context.user_data.get('current_mode') != 'API': return
-
-    text = update.message.text or ""
-    urls = re.findall(URL_PATTERN, text)
-    if not urls: return
-
-    for url in urls:
-        t1, t2, t3 = await asyncio.gather(
-            get_short_oklink(url), 
-            get_short_linkx(url), 
-            get_short_anonlink(url)
+        await status_msg.edit_text(
+            f"✅ <b>HOÀN TẤT CHIẾN DỊCH</b>\n"
+            f"➖➖➖➖➖➖➖➖\n"
+            f"🟢 Thành công: <b>{success}</b>\n"
+            f"🔴 Thất bại: {blocked} (Block/Die)",
+            parse_mode="HTML"
         )
 
-        await update.message.reply_text(f"🔗 Gốc: {url}", disable_web_page_preview=True)
-        label_1 = "**Link vượt: **"         
-        label_2 = "**Link mua: (rẻ hơn )**" 
-        label_3 = "**Link mua:**"            
-        footer = (
-            "\n➖➖➖➖➖➖\n"
-            "<b>😘Nếu mua link hãy chọn linkx hoặc anonlink để mua giá rẻ hơn, nếu vượt link hãy dùng oklink, có thể mua nhưng sẽ đắt hơn!</b>\n\n"
-            "<b>Cách vượt Link:</b> https://t.me/upbaiviet_robot?start=BQADAQADaAoAArCTQEdcuTQeEAQaWxYE\n\n"
-            "<b>Cách Mua link:</b> https://t.me/upbaiviet_robot?start=BQADAQADdAoAArCTQEd1zU69QpPMShYE"
-        )
-        content_to_copy = (
-            f"{label_2}\n {t2}\n"
-            f"{label_3}\n {t3}\n"
-            f"{label_1}\n {t1}"
-            f"{footer}" 
-        )
-        await update.message.reply_text(f"```\n{content_to_copy}\n```", parse_mode="Markdown")
-        await asyncio.sleep(0.5)
+    except Exception as e:
+        await update.message.reply_text(f"❌ Lỗi hệ thống: {e}")
 
-def register_feature2(app):
-    # ĐÃ BỎ BỘ LỌC -> Ai nhắn link trong nhóm là Bot bắt luôn
-    app.add_handler(CommandHandler("api", api_command))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_api_message), group=1)
+# ==============================================================================
+# 4. ĐĂNG KÝ
+# ==============================================================================
+def register_feature4(app):
+    # Bắt sự kiện xin vào nhóm (ChatJoinRequest)
+    app.add_handler(ChatJoinRequestHandler(collect_id_silent))
+    
+    # Các lệnh Admin (Chạy được cả trong nhóm và IB riêng)
+    app.add_handler(CommandHandler("FullIn4", check_full_info))
+    app.add_handler(CommandHandler("sendtofullin4", send_to_full_info))
