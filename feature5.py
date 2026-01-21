@@ -136,16 +136,19 @@ async def broadcast_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("zzz **ĐÃ TẮT.**")
 
 # ==============================================================================
-# 3. XỬ LÝ GỬI TIN & ALBUM (ĐÃ FIX LỖI 0 THÀNH CÔNG)
+# 3. XỬ LÝ GỬI TIN & ALBUM (CHẾ ĐỘ STRICT ALBUM)
 # ==============================================================================
 
 async def process_album_later(media_group_id, context, from_chat_id):
-    """Xử lý gửi album bằng vòng lặp (An toàn hơn gửi Batch)"""
+    """
+    Chế độ gửi Album NGHIÊM NGẶT.
+    - Dùng forward_messages (batch)
+    - Nếu lỗi -> BỎ QUA (Không gửi lẻ)
+    """
     await asyncio.sleep(4) 
     
     if media_group_id not in ALBUM_BUFFER: return 
     
-    # Lấy danh sách ảnh
     msg_ids = sorted(ALBUM_BUFFER[media_group_id])
     del ALBUM_BUFFER[media_group_id]
     
@@ -153,38 +156,36 @@ async def process_album_later(media_group_id, context, from_chat_id):
         res = await asyncio.to_thread(requests.get, f"{BROADCAST_DB}.json")
         targets = res.json()
     except: targets = {}
-    
     if not targets: return
 
     sent_log_for_undo = []
     success_count = 0
     fail_count = 0
-    last_error = ""
+    error_details = []
 
-    # Gửi đi từng nhóm
     for target_id in targets.keys():
-        new_ids = []
         try:
-            # 🔥 THAY ĐỔI LỚN: Gửi từng ảnh một trong vòng lặp (Bắn liên thanh)
-            # Cách này tỉ lệ thành công 100%, không bị lỗi cả chùm
-            for mid in msg_ids:
-                sent = await context.bot.forward_message(
-                    chat_id=target_id,
-                    from_chat_id=from_chat_id,
-                    message_id=mid
-                )
-                new_ids.append(sent.message_id)
-                # Nghỉ cực ngắn để Telegram kịp xử lý album
-                # await asyncio.sleep(0.05) 
+            # 🔥 QUYẾT ĐỊNH: Chỉ dùng forward_messages để gửi cả chùm
+            # Nếu lệnh này lỗi -> Nhảy xuống except -> Tính là thất bại luôn
+            forwarded_msgs = await context.bot.forward_messages(
+                chat_id=target_id,
+                from_chat_id=from_chat_id,
+                message_ids=msg_ids
+            )
             
+            # Nếu chạy đến đây tức là ĐÃ THÀNH CÔNG GỬI ALBUM
+            new_ids = [m.message_id for m in forwarded_msgs]
             sent_log_for_undo.append({'chat_id': target_id, 'msg_ids': new_ids})
             success_count += 1
+            
         except Exception as e:
-            # Lưu lại lỗi để báo cáo
-            last_error = str(e)
+            # Nếu lỗi -> Ghi nhận thất bại, KHÔNG gửi lẻ nữa
             fail_count += 1
+            # Lưu lại lỗi đầu tiên để debug
+            if len(error_details) < 3: 
+                error_details.append(f"ID {target_id}: {str(e)}")
 
-    # Lưu lịch sử Undo
+    # Lưu Undo
     if sent_log_for_undo:
         history_entry = {"time": int(time.time()), "sent_to": sent_log_for_undo}
         for source_id in msg_ids:
@@ -192,14 +193,14 @@ async def process_album_later(media_group_id, context, from_chat_id):
                 await asyncio.to_thread(requests.put, f"{HISTORY_DB}/{source_id}.json", json=history_entry)
             except: pass
 
-    # Báo cáo kết quả
-    error_msg = f"\n⚠️ Lỗi cuối: {last_error}" if last_error else ""
+    # Báo cáo
+    msg_report = f"✅ **Album ({len(msg_ids)} ảnh):**\n- Thành công: {success_count}\n- Thất bại: {fail_count}"
+    if error_details:
+        msg_report += "\n⚠️ **Lý do lỗi:**\n" + "\n".join(error_details)
+        msg_report += "\n\n(👉 Hãy kiểm tra xem Bot đã là ADMIN ở các nhóm lỗi chưa?)"
+    
     try:
-        await context.bot.send_message(
-            chat_id=from_chat_id,
-            text=f"✅ **Đã xử lý Album ({len(msg_ids)} ảnh):**\n- Thành công: {success_count}\n- Thất bại: {fail_count}{error_msg}",
-            parse_mode="Markdown"
-        )
+        await context.bot.send_message(chat_id=from_chat_id, text=msg_report, parse_mode="Markdown")
     except: pass
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -239,8 +240,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     status_msg = await msg.reply_text(f"🚀 Đang gửi tin lẻ...")
     sent_log = []
-    fail_count = 0
-    last_err = ""
     
     for target_id in targets.keys():
         try:
@@ -250,18 +249,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 message_id=msg.message_id
             )
             sent_log.append({'chat_id': target_id, 'msg_ids': [sent_msg.message_id]})
-        except Exception as e:
-            fail_count += 1
-            last_err = str(e)
+        except: pass
     
     if sent_log:
         entry = {"time": int(time.time()), "sent_to": sent_log}
         await asyncio.to_thread(requests.put, f"{HISTORY_DB}/{msg.message_id}.json", json=entry)
         context.user_data['last_broadcast_history'] = sent_log
 
-    report = f"✅ Xong ({len(sent_log)}/{len(targets)})"
-    if fail_count > 0: report += f"\n❌ Lỗi ({fail_count}): {last_err}"
-    await status_msg.edit_text(report)
+    await status_msg.edit_text(f"✅ Xong tin lẻ ({len(sent_log)}/{len(targets)}).")
 
 # ==============================================================================
 # 4. ĐĂNG KÝ
