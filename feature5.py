@@ -133,7 +133,7 @@ async def handle_broadcast_content(update: Update, context: ContextTypes.DEFAULT
 # ==============================================================================
 # 4. ĐĂNG KÝ
 # ==============================================================================
-def register_feature4(app):
+def register_feature5(app):
     # Lệnh quản lý nhóm (Dùng trong nhóm)
     app.add_handler(CommandHandler("add", add_group))
     app.add_handler(CommandHandler("remove", remove_group))
