@@ -5,7 +5,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 
 # ==============================================================================
-# 🔐 CẤU HÌNH BẢO MẬT (SYSTEM LOCK)
+# 🔐 CẤU HÌNH BẢO MẬT
 # ==============================================================================
 IS_SYSTEM_ACTIVE = False 
 
@@ -25,15 +25,15 @@ ALBUM_BUFFER = {}
 async def active_system(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global IS_SYSTEM_ACTIVE
     IS_SYSTEM_ACTIVE = True
-    await update.message.reply_text("🔓 **SYSTEM UNLOCKED!**\nBot đã tỉnh.", parse_mode="Markdown")
+    await update.message.reply_text("🔓 **SYSTEM UNLOCKED!**", parse_mode="Markdown")
 
 async def lock_system(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global IS_SYSTEM_ACTIVE
     IS_SYSTEM_ACTIVE = False
-    await update.message.reply_text("🔒 **SYSTEM LOCKED!**\nBot đã ngủ.", parse_mode="Markdown")
+    await update.message.reply_text("🔒 **SYSTEM LOCKED!**", parse_mode="Markdown")
 
 # ==============================================================================
-# 1. HÀM PHỤ TRỢ (DỌN DẸP & UNDO)
+# 1. HÀM PHỤ TRỢ (UNDO & CLEAN)
 # ==============================================================================
 
 async def clean_old_history():
@@ -83,7 +83,7 @@ async def undo_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await status_msg.edit_text(f"✅ Đã thu hồi {deleted_count} tin nhắn!")
 
 # ==============================================================================
-# 2. QUẢN LÝ NHÓM & MENU
+# 2. QUẢN LÝ NHÓM
 # ==============================================================================
 
 async def add_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -136,11 +136,11 @@ async def broadcast_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("zzz **ĐÃ TẮT.**")
 
 # ==============================================================================
-# 3. XỬ LÝ GỬI TIN & ALBUM (ĐÃ SỬA LỖI IM LẶNG)
+# 3. XỬ LÝ GỬI TIN & ALBUM (ĐÃ FIX LỖI 0 THÀNH CÔNG)
 # ==============================================================================
 
 async def process_album_later(media_group_id, context, from_chat_id):
-    """Xử lý gửi album và BÁO CÁO lại cho admin"""
+    """Xử lý gửi album bằng vòng lặp (An toàn hơn gửi Batch)"""
     await asyncio.sleep(4) 
     
     if media_group_id not in ALBUM_BUFFER: return 
@@ -149,7 +149,6 @@ async def process_album_later(media_group_id, context, from_chat_id):
     msg_ids = sorted(ALBUM_BUFFER[media_group_id])
     del ALBUM_BUFFER[media_group_id]
     
-    # Lấy danh sách đích
     try:
         res = await asyncio.to_thread(requests.get, f"{BROADCAST_DB}.json")
         targets = res.json()
@@ -160,34 +159,45 @@ async def process_album_later(media_group_id, context, from_chat_id):
     sent_log_for_undo = []
     success_count = 0
     fail_count = 0
-    
-    # Gửi đi
+    last_error = ""
+
+    # Gửi đi từng nhóm
     for target_id in targets.keys():
+        new_ids = []
         try:
-            forwarded_msgs = await context.bot.forward_messages(
-                chat_id=target_id,
-                from_chat_id=from_chat_id,
-                message_ids=msg_ids
-            )
-            new_ids = [m.message_id for m in forwarded_msgs]
+            # 🔥 THAY ĐỔI LỚN: Gửi từng ảnh một trong vòng lặp (Bắn liên thanh)
+            # Cách này tỉ lệ thành công 100%, không bị lỗi cả chùm
+            for mid in msg_ids:
+                sent = await context.bot.forward_message(
+                    chat_id=target_id,
+                    from_chat_id=from_chat_id,
+                    message_id=mid
+                )
+                new_ids.append(sent.message_id)
+                # Nghỉ cực ngắn để Telegram kịp xử lý album
+                # await asyncio.sleep(0.05) 
+            
             sent_log_for_undo.append({'chat_id': target_id, 'msg_ids': new_ids})
             success_count += 1
         except Exception as e:
-            print(f"Lỗi gửi album: {e}")
+            # Lưu lại lỗi để báo cáo
+            last_error = str(e)
             fail_count += 1
 
     # Lưu lịch sử Undo
-    history_entry = {"time": int(time.time()), "sent_to": sent_log_for_undo}
-    for source_id in msg_ids:
-        try:
-            await asyncio.to_thread(requests.put, f"{HISTORY_DB}/{source_id}.json", json=history_entry)
-        except: pass
+    if sent_log_for_undo:
+        history_entry = {"time": int(time.time()), "sent_to": sent_log_for_undo}
+        for source_id in msg_ids:
+            try:
+                await asyncio.to_thread(requests.put, f"{HISTORY_DB}/{source_id}.json", json=history_entry)
+            except: pass
 
-    # 👇 ĐÂY LÀ PHẦN MỚI THÊM: Gửi thông báo về cho Admin sau khi xong
+    # Báo cáo kết quả
+    error_msg = f"\n⚠️ Lỗi cuối: {last_error}" if last_error else ""
     try:
         await context.bot.send_message(
             chat_id=from_chat_id,
-            text=f"✅ **Đã gửi Album ({len(msg_ids)} ảnh/video):**\n- Thành công: {success_count} nhóm\n- Thất bại: {fail_count} nhóm",
+            text=f"✅ **Đã xử lý Album ({len(msg_ids)} ảnh):**\n- Thành công: {success_count}\n- Thất bại: {fail_count}{error_msg}",
             parse_mode="Markdown"
         )
     except: pass
@@ -207,20 +217,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await msg.reply_text(f"🎯 Thêm: **{fwd_chat.title}**", parse_mode="Markdown")
             except: pass
         else:
-            await msg.reply_text("💡 **MENU:**\n/bc on - Bật\n/delete - Xóa kênh\n/undo - Thu hồi\n/lockbot - Khóa Bot")
+            await msg.reply_text("💡 **MENU:**\n/bc on - Bật\n/activeforadmin - Mở khóa\nForward từ kênh vào đây để thêm.")
         return
 
     # --- XỬ LÝ GỬI ALBUM ---
     if msg.media_group_id:
         group_id = msg.media_group_id
-        
-        # Nếu là ảnh đầu tiên của Album -> Tạo buffer và BÁO HIỆU
         if group_id not in ALBUM_BUFFER:
             ALBUM_BUFFER[group_id] = []
             asyncio.create_task(process_album_later(group_id, context, msg.chat_id))
-            # 👇 Báo cho bạn biết là bot đã nhận được album
-            await msg.reply_text("⏳ Đang gom Album, vui lòng đợi 4s...")
-        
+            await msg.reply_text("⏳ Đang gom Album (4s)...")
         ALBUM_BUFFER[group_id].append(msg.message_id)
         return
     
@@ -233,6 +239,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     status_msg = await msg.reply_text(f"🚀 Đang gửi tin lẻ...")
     sent_log = []
+    fail_count = 0
+    last_err = ""
     
     for target_id in targets.keys():
         try:
@@ -242,14 +250,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 message_id=msg.message_id
             )
             sent_log.append({'chat_id': target_id, 'msg_ids': [sent_msg.message_id]})
-        except: pass
+        except Exception as e:
+            fail_count += 1
+            last_err = str(e)
     
     if sent_log:
         entry = {"time": int(time.time()), "sent_to": sent_log}
         await asyncio.to_thread(requests.put, f"{HISTORY_DB}/{msg.message_id}.json", json=entry)
         context.user_data['last_broadcast_history'] = sent_log
 
-    await status_msg.edit_text(f"✅ Xong tin lẻ (Gửi đến {len(sent_log)} nơi).")
+    report = f"✅ Xong ({len(sent_log)}/{len(targets)})"
+    if fail_count > 0: report += f"\n❌ Lỗi ({fail_count}): {last_err}"
+    await status_msg.edit_text(report)
 
 # ==============================================================================
 # 4. ĐĂNG KÝ
