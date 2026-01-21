@@ -73,6 +73,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if args:
         command = args[0]
+        # --- XỬ LÝ REF ---
         if command.startswith("ref_"):
             referrer_id = command.split("_")[1]
             keyboard = [
@@ -93,6 +94,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"Bạn hiện đang có {current_credits} lượt lưu nội dung.", reply_markup=reply_markup)
             return
 
+        # --- XỬ LÝ LẤY NỘI DUNG (VIDEO/ẢNH) ---
         alias = command
         url = f"{FIREBASE_URL}/{alias}.json"
         try:
@@ -118,16 +120,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         msgs_to_delete.extend(batch)
                         await asyncio.sleep(0.5)
 
-                # --- ĐÂY LÀ PHẦN ĐÃ THÊM NÚT NHẬN LƯỢT ---
                 keyboard = [
-                    # Nút 1: Tải Video
                     [InlineKeyboardButton(f"📥 Tải video (còn {current_credits} lượt)", callback_data=f"dl_{alias}")],
-                    # Nút 2: Chia sẻ
                     [InlineKeyboardButton("🔗 Chia sẻ nhận thêm lượt", url=full_share_url)],
-                    # Nút 3: NHIỆM VỤ HÀNG NGÀY (MỚI THÊM)
                     [InlineKeyboardButton("🎁 Nhận 1 lượt mỗi ngày", callback_data="task_open")]
                 ]
-                # -----------------------------------------
                 
                 info_msg = await update.message.reply_text(
                     "📌 Video sẽ được xóa sau 24h.\nNội dung được bảo vệ chống sao chép.\nNhấn nút dưới để tải (yêu cầu lượt tải).",
@@ -137,6 +134,24 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 for m in msgs_to_delete:
                     context.job_queue.run_once(delete_msg_job, 86400, data=m.message_id, chat_id=update.effective_chat.id)
+
+                # ==================================================================
+                # 🔥 TÍNH NĂNG MỚI: TỰ ĐỘNG RÚT GỌN LINK START NẾU /API ON
+                # ==================================================================
+                if context.user_data.get('current_mode') == 'API':
+                    # 1. Tạo lại cái link Start gốc
+                    bot_username = context.bot.username
+                    start_link_full = f"https://t.me/{bot_username}?start={alias}"
+
+                    # 2. Gọi hàm xử lý từ feature2 (Import ở đây để tránh lỗi vòng lặp)
+                    from feature2 import generate_shortened_content
+                    
+                    # 3. Chờ rút gọn và gửi kết quả
+                    shortened_text = await generate_shortened_content(start_link_full)
+                    
+                    # 4. Gửi kết quả (Dạng code block để copy)
+                    await update.message.reply_text(f"🚀 **AUTO API:**\nLink gốc: {start_link_full}", disable_web_page_preview=True)
+                    await update.message.reply_text(f"<pre>{shortened_text}</pre>", parse_mode="HTML")
 
             else: 
                 await update.message.reply_text("❌ Liên kết không tồn tại hoặc đã bị xóa.")
@@ -156,7 +171,6 @@ async def newlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Đã vào chế độ lưu trữ. Hãy gửi Ảnh/Video, xong nhắn /done.")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Vẫn giữ tính năng KHÔNG XÓA TIN NHẮN
     if context.user_data.get('current_mode') != 'STORE':
         return 
 
@@ -198,7 +212,6 @@ async def sigmaboy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⚙️ Cấu hình bảo mật đã được cập nhật.")
 
 def register_feature1(app):
-    # ĐÃ BỎ BỘ LỌC PRIVATE -> Chạy trong nhóm OK
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("newlink", newlink))
     app.add_handler(CommandHandler("done", done))
