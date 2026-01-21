@@ -136,14 +136,13 @@ async def broadcast_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("zzz **ĐÃ TẮT.**")
 
 # ==============================================================================
-# 3. XỬ LÝ GỬI TIN & ALBUM (CHẾ ĐỘ STRICT ALBUM)
+# 3. XỬ LÝ GỬI TIN & ALBUM (CHỈ DÙNG FORWARD - KHÔNG TÁI TẠO)
 # ==============================================================================
 
 async def process_album_later(media_group_id, context, from_chat_id):
     """
-    Chế độ gửi Album NGHIÊM NGẶT.
-    - Dùng forward_messages (batch)
-    - Nếu lỗi -> BỎ QUA (Không gửi lẻ)
+    Chỉ dùng forward_messages để giữ nguồn.
+    Nếu lỗi -> Báo lỗi cụ thể để User biết đường sửa.
     """
     await asyncio.sleep(4) 
     
@@ -161,29 +160,34 @@ async def process_album_later(media_group_id, context, from_chat_id):
     sent_log_for_undo = []
     success_count = 0
     fail_count = 0
-    error_details = []
+    error_reasons = []
 
     for target_id in targets.keys():
         try:
-            # 🔥 QUYẾT ĐỊNH: Chỉ dùng forward_messages để gửi cả chùm
-            # Nếu lệnh này lỗi -> Nhảy xuống except -> Tính là thất bại luôn
+            # 🔥 QUAN TRỌNG: Lệnh này giữ nguyên chữ "Forwarded from..."
             forwarded_msgs = await context.bot.forward_messages(
                 chat_id=target_id,
                 from_chat_id=from_chat_id,
                 message_ids=msg_ids
             )
             
-            # Nếu chạy đến đây tức là ĐÃ THÀNH CÔNG GỬI ALBUM
             new_ids = [m.message_id for m in forwarded_msgs]
             sent_log_for_undo.append({'chat_id': target_id, 'msg_ids': new_ids})
             success_count += 1
             
         except Exception as e:
-            # Nếu lỗi -> Ghi nhận thất bại, KHÔNG gửi lẻ nữa
+            # Nếu lỗi -> Ghi nhận và báo cáo, KHÔNG GỬI LẺ, KHÔNG TÁI TẠO
             fail_count += 1
-            # Lưu lại lỗi đầu tiên để debug
-            if len(error_details) < 3: 
-                error_details.append(f"ID {target_id}: {str(e)}")
+            err_str = str(e)
+            if "Chat not found" in err_str:
+                error_reasons.append(f"- ID {target_id}: Bot chưa vào nhóm hoặc sai ID.")
+            elif "bot was kicked" in err_str:
+                error_reasons.append(f"- ID {target_id}: Bot bị kick khỏi nhóm.")
+            elif "don't have rights to send messages" in err_str:
+                error_reasons.append(f"- ID {target_id}: Bot không phải Admin (không được post).")
+            else:
+                if len(error_reasons) < 2: # Chỉ lưu vài lỗi lạ
+                    error_reasons.append(f"- ID {target_id}: {err_str}")
 
     # Lưu Undo
     if sent_log_for_undo:
@@ -194,10 +198,9 @@ async def process_album_later(media_group_id, context, from_chat_id):
             except: pass
 
     # Báo cáo
-    msg_report = f"✅ **Album ({len(msg_ids)} ảnh):**\n- Thành công: {success_count}\n- Thất bại: {fail_count}"
-    if error_details:
-        msg_report += "\n⚠️ **Lý do lỗi:**\n" + "\n".join(error_details)
-        msg_report += "\n\n(👉 Hãy kiểm tra xem Bot đã là ADMIN ở các nhóm lỗi chưa?)"
+    msg_report = f"✅ **Album ({len(msg_ids)} ảnh) - Chế độ Giữ Nguồn:**\n- Thành công: {success_count}\n- Thất bại: {fail_count}"
+    if error_reasons:
+        msg_report += "\n\n⚠️ **LÝ DO THẤT BẠI:**\n" + "\n".join(error_reasons)
     
     try:
         await context.bot.send_message(chat_id=from_chat_id, text=msg_report, parse_mode="Markdown")
@@ -227,7 +230,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if group_id not in ALBUM_BUFFER:
             ALBUM_BUFFER[group_id] = []
             asyncio.create_task(process_album_later(group_id, context, msg.chat_id))
-            await msg.reply_text("⏳ Đang gom Album (4s)...")
+            await msg.reply_text("⏳ Đang xử lý Album (Giữ nguồn)...")
         ALBUM_BUFFER[group_id].append(msg.message_id)
         return
     
@@ -238,7 +241,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except: targets = {}
     if not targets: return await msg.reply_text("⚠️ List trống.")
     
-    status_msg = await msg.reply_text(f"🚀 Đang gửi tin lẻ...")
+    status_msg = await msg.reply_text(f"🚀 Đang gửi tin lẻ (Giữ nguồn)...")
     sent_log = []
     
     for target_id in targets.keys():
