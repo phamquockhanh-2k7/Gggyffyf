@@ -135,7 +135,7 @@ async def broadcast_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def process_album_later(media_group_id, context, from_chat_id):
     """Hàm chạy sau 2s để gửi cả chùm album"""
-    await asyncio.sleep(2) # Chờ 2 giây để gom đủ ảnh
+    await asyncio.sleep(4) # Chờ 2 giây để gom đủ ảnh
     
     if media_group_id not in ALBUM_BUFFER: return # Đã xử lý rồi thì thôi
     
