@@ -1,6 +1,7 @@
 import asyncio
 import requests
 import time
+import json
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 
@@ -21,7 +22,6 @@ ALBUM_BUFFER = {}
 # ==============================================================================
 # 0. HỆ THỐNG KÍCH HOẠT
 # ==============================================================================
-
 async def active_system(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global IS_SYSTEM_ACTIVE
     IS_SYSTEM_ACTIVE = True
@@ -35,7 +35,6 @@ async def lock_system(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==============================================================================
 # 1. HÀM PHỤ TRỢ (UNDO & CLEAN)
 # ==============================================================================
-
 async def clean_old_history():
     try:
         res = await asyncio.to_thread(requests.get, f"{HISTORY_DB}.json")
@@ -81,10 +80,6 @@ async def undo_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except: pass
             
     await status_msg.edit_text(f"✅ Đã thu hồi {deleted_count} tin nhắn!")
-
-# ==============================================================================
-# 2. QUẢN LÝ NHÓM
-# ==============================================================================
 
 async def add_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not IS_SYSTEM_ACTIVE: return
@@ -136,14 +131,25 @@ async def broadcast_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("zzz **ĐÃ TẮT.**")
 
 # ==============================================================================
-# 3. XỬ LÝ GỬI TIN & ALBUM (CHỈ DÙNG FORWARD - KHÔNG TÁI TẠO)
+# 2. XỬ LÝ GỬI TIN & ALBUM (DÙNG API TRỰC TIẾP)
 # ==============================================================================
 
+async def send_via_direct_api(token, chat_id, from_chat_id, message_ids):
+    """
+    Hàm này bỏ qua thư viện bot, gửi lệnh thẳng lên Server Telegram.
+    Giúp gửi được Album (forwardMessages) ngay cả khi dùng thư viện cũ.
+    """
+    url = f"https://api.telegram.org/bot{token}/forwardMessages"
+    payload = {
+        "chat_id": chat_id,
+        "from_chat_id": from_chat_id,
+        "message_ids": message_ids
+    }
+    # Gọi API
+    response = await asyncio.to_thread(requests.post, url, json=payload)
+    return response.json()
+
 async def process_album_later(media_group_id, context, from_chat_id):
-    """
-    Chỉ dùng forward_messages để giữ nguồn.
-    Nếu lỗi -> Báo lỗi cụ thể để User biết đường sửa.
-    """
     await asyncio.sleep(4) 
     
     if media_group_id not in ALBUM_BUFFER: return 
@@ -160,34 +166,31 @@ async def process_album_later(media_group_id, context, from_chat_id):
     sent_log_for_undo = []
     success_count = 0
     fail_count = 0
-    error_reasons = []
+    error_details = []
+
+    # Lấy Token của bot để gọi API
+    bot_token = context.bot.token 
 
     for target_id in targets.keys():
         try:
-            # 🔥 QUAN TRỌNG: Lệnh này giữ nguyên chữ "Forwarded from..."
-            forwarded_msgs = await context.bot.forward_messages(
-                chat_id=target_id,
-                from_chat_id=from_chat_id,
-                message_ids=msg_ids
-            )
+            # 🔥 GỌI HÀM HACK API
+            api_res = await send_via_direct_api(bot_token, target_id, from_chat_id, msg_ids)
             
-            new_ids = [m.message_id for m in forwarded_msgs]
-            sent_log_for_undo.append({'chat_id': target_id, 'msg_ids': new_ids})
-            success_count += 1
-            
-        except Exception as e:
-            # Nếu lỗi -> Ghi nhận và báo cáo, KHÔNG GỬI LẺ, KHÔNG TÁI TẠO
-            fail_count += 1
-            err_str = str(e)
-            if "Chat not found" in err_str:
-                error_reasons.append(f"- ID {target_id}: Bot chưa vào nhóm hoặc sai ID.")
-            elif "bot was kicked" in err_str:
-                error_reasons.append(f"- ID {target_id}: Bot bị kick khỏi nhóm.")
-            elif "don't have rights to send messages" in err_str:
-                error_reasons.append(f"- ID {target_id}: Bot không phải Admin (không được post).")
+            if api_res.get("ok"):
+                # Lấy danh sách ID tin nhắn mới từ phản hồi API
+                result_msgs = api_res.get("result", [])
+                new_ids = [m["message_id"] for m in result_msgs]
+                sent_log_for_undo.append({'chat_id': target_id, 'msg_ids': new_ids})
+                success_count += 1
             else:
-                if len(error_reasons) < 2: # Chỉ lưu vài lỗi lạ
-                    error_reasons.append(f"- ID {target_id}: {err_str}")
+                # Nếu Telegram báo lỗi
+                error_desc = api_res.get("description", "Unknown error")
+                fail_count += 1
+                error_details.append(f"- ID {target_id}: {error_desc}")
+                
+        except Exception as e:
+            fail_count += 1
+            error_details.append(f"- ID {target_id}: {str(e)}")
 
     # Lưu Undo
     if sent_log_for_undo:
@@ -198,9 +201,9 @@ async def process_album_later(media_group_id, context, from_chat_id):
             except: pass
 
     # Báo cáo
-    msg_report = f"✅ **Album ({len(msg_ids)} ảnh) - Chế độ Giữ Nguồn:**\n- Thành công: {success_count}\n- Thất bại: {fail_count}"
-    if error_reasons:
-        msg_report += "\n\n⚠️ **LÝ DO THẤT BẠI:**\n" + "\n".join(error_reasons)
+    msg_report = f"✅ **Album ({len(msg_ids)} ảnh) - Direct API:**\n- Thành công: {success_count}\n- Thất bại: {fail_count}"
+    if error_details:
+        msg_report += "\n⚠️ Lỗi: " + error_details[0]
     
     try:
         await context.bot.send_message(chat_id=from_chat_id, text=msg_report, parse_mode="Markdown")
@@ -234,24 +237,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ALBUM_BUFFER[group_id].append(msg.message_id)
         return
     
-    # --- XỬ LÝ GỬI TIN LẺ ---
+    # --- XỬ LÝ GỬI TIN LẺ (Cũng dùng API luôn cho đồng bộ) ---
     try:
         res = await asyncio.to_thread(requests.get, f"{BROADCAST_DB}.json")
         targets = res.json()
     except: targets = {}
     if not targets: return await msg.reply_text("⚠️ List trống.")
     
-    status_msg = await msg.reply_text(f"🚀 Đang gửi tin lẻ (Giữ nguồn)...")
+    status_msg = await msg.reply_text(f"🚀 Đang gửi tin lẻ...")
     sent_log = []
+    bot_token = context.bot.token
     
     for target_id in targets.keys():
         try:
-            sent_msg = await context.bot.forward_message(
-                chat_id=target_id,
-                from_chat_id=msg.chat_id,
-                message_id=msg.message_id
+            # Dùng forwardMessage (số ít) qua API
+            api_res = await asyncio.to_thread(requests.post, 
+                f"https://api.telegram.org/bot{bot_token}/forwardMessage",
+                json={"chat_id": target_id, "from_chat_id": msg.chat_id, "message_id": msg.message_id}
             )
-            sent_log.append({'chat_id': target_id, 'msg_ids': [sent_msg.message_id]})
+            resp = api_res.json()
+            if resp.get("ok"):
+                new_id = resp["result"]["message_id"]
+                sent_log.append({'chat_id': target_id, 'msg_ids': [new_id]})
         except: pass
     
     if sent_log:
@@ -262,7 +269,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await status_msg.edit_text(f"✅ Xong tin lẻ ({len(sent_log)}/{len(targets)}).")
 
 # ==============================================================================
-# 4. ĐĂNG KÝ
+# 3. ĐĂNG KÝ
 # ==============================================================================
 def register_feature5(app):
     app.add_handler(CommandHandler("activeforadmin", active_system))
