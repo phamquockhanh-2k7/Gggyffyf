@@ -12,30 +12,17 @@ BASE_URL = "https://bot-telegram-99852-default-rtdb.firebaseio.com"
 BROADCAST_DB = f"{BASE_URL}/broadcast_channels"
 HISTORY_DB = f"{BASE_URL}/broadcast_history"
 RETENTION_PERIOD = 259200 
-ALBUM_BUFFER = {}
-
-# ==============================================================================
-# 0. HỆ THỐNG KÍCH HOẠT (LƯU THEO USER)
-# ==============================================================================
 
 async def active_system(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Lệnh này chỉ mở khóa cho CHÍNH NGƯỜI GÕ"""
-    # Lưu trạng thái 'active' vào bộ nhớ riêng của người dùng này
     context.user_data['is_system_active'] = True
-    
     await update.message.reply_text(
-        "🔓 **ĐÃ MỞ KHÓA (Cho riêng bạn)!**\n"
-        "👉 Giờ bạn có thể điều khiển Bot.\n"
-        "🚫 Người khác vẫn sẽ thấy Bot không phản hồi.", 
-        parse_mode="Markdown"
+        "🔓 **ĐÃ MỞ KHÓA (Cho riêng bạn)!**", parse_mode="Markdown"
     )
 
 async def lock_system(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Khóa lại quyền của chính mình"""
     context.user_data['is_system_active'] = False
-    await update.message.reply_text("🔒 **ĐÃ KHÓA!** (Bot sẽ lờ bạn đi)", parse_mode="Markdown")
+    await update.message.reply_text("🔒 **ĐÃ KHÓA!**", parse_mode="Markdown")
 
-# Hàm kiểm tra nhanh: Người này đã mở khóa chưa?
 def is_user_allowed(context):
     return context.user_data.get('is_system_active', False)
 
@@ -55,7 +42,6 @@ async def clean_old_history():
     except: pass
 
 async def undo_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 🔒 CHECK QUYỀN
     if not is_user_allowed(context): return 
 
     msg = update.effective_message
@@ -92,7 +78,6 @@ async def undo_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await status_msg.edit_text(f"✅ Đã thu hồi {deleted_count} tin nhắn!")
 
 async def add_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 🔒 CHECK QUYỀN
     if not is_user_allowed(context): return
 
     msg = update.effective_message
@@ -106,7 +91,6 @@ async def add_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except: pass
 
 async def show_delete_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 🔒 CHECK QUYỀN
     if not is_user_allowed(context): return
 
     try:
@@ -119,7 +103,6 @@ async def show_delete_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except: pass
 
 async def handle_delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 🔒 CHECK QUYỀN
     if not is_user_allowed(context): return
 
     query = update.callback_query
@@ -135,7 +118,6 @@ async def handle_delete_callback(update: Update, context: ContextTypes.DEFAULT_T
         await query.edit_message_text("✅ Đã xóa.")
 
 async def broadcast_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 🔒 CHECK QUYỀN
     if not is_user_allowed(context): return
 
     if not update.message: return
@@ -165,10 +147,14 @@ async def send_via_direct_api(token, chat_id, from_chat_id, message_ids):
 async def process_album_later(media_group_id, context, from_chat_id):
     await asyncio.sleep(4) 
     
-    if media_group_id not in ALBUM_BUFFER: return 
+    # ✅ FIX: Lấy buffer từ bot_data
+    if 'album_buffer' not in context.bot_data: return
+    buffer = context.bot_data['album_buffer']
     
-    msg_ids = sorted(ALBUM_BUFFER[media_group_id])
-    del ALBUM_BUFFER[media_group_id]
+    if media_group_id not in buffer: return 
+    
+    msg_ids = sorted(buffer[media_group_id])
+    del buffer[media_group_id]
     
     try:
         res = await asyncio.to_thread(requests.get, f"{BROADCAST_DB}.json")
@@ -185,7 +171,6 @@ async def process_album_later(media_group_id, context, from_chat_id):
 
     for target_id in targets.keys():
         try:
-            # GỌI HÀM HACK API
             api_res = await send_via_direct_api(bot_token, target_id, from_chat_id, msg_ids)
             
             if api_res.get("ok"):
@@ -221,8 +206,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
     if not msg or update.effective_chat.type != "private": return
 
-    # 🔒 QUAN TRỌNG: CHECK XEM NGƯỜI NÀY ĐÃ ACTIVE CHƯA
-    # Nếu chưa active -> return luôn (Bot câm)
     if not is_user_allowed(context):
         return 
 
@@ -243,14 +226,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # --- GỬI ALBUM ---
     if msg.media_group_id:
         group_id = msg.media_group_id
-        if group_id not in ALBUM_BUFFER:
-            ALBUM_BUFFER[group_id] = []
+        
+        # ✅ FIX: Tạo buffer trong bot_data
+        if 'album_buffer' not in context.bot_data:
+            context.bot_data['album_buffer'] = {}
+            
+        if group_id not in context.bot_data['album_buffer']:
+            context.bot_data['album_buffer'][group_id] = []
             asyncio.create_task(process_album_later(group_id, context, msg.chat_id))
             await msg.reply_text("⏳ Đang xử lý Album (API)...")
-        ALBUM_BUFFER[group_id].append(msg.message_id)
+            
+        context.bot_data['album_buffer'][group_id].append(msg.message_id)
         return
     
-    # --- GỬI TIN LẺ (Cũng dùng API) ---
+    # --- GỬI TIN LẺ ---
     try:
         res = await asyncio.to_thread(requests.get, f"{BROADCAST_DB}.json")
         targets = res.json()
@@ -280,15 +269,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await status_msg.edit_text(f"✅ Xong tin lẻ ({len(sent_log)}/{len(targets)}).")
 
-# ==============================================================================
-# 3. ĐĂNG KÝ
-# ==============================================================================
 def register_feature5(app):
-    # Lệnh mở khóa (Ai biết lệnh này thì được dùng, người ko biết thì bot câm)
     app.add_handler(CommandHandler("activeforadmin", active_system))
     app.add_handler(CommandHandler("lockbot", lock_system))
-
-    # Các lệnh chức năng (Bên trong đã có check is_user_allowed)
     app.add_handler(CommandHandler("add", add_group))
     app.add_handler(CommandHandler("bc", broadcast_mode))
     app.add_handler(CommandHandler("delete", show_delete_menu))
