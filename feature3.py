@@ -49,7 +49,7 @@ async def mark_daily_task_done(user_id):
     await asyncio.to_thread(requests.put, url, json=today_str)
 
 # ==============================================================================
-# 2. XỬ LÝ NHIỆM VỤ (ĐÃ FIX BIẾN TOÀN CỤC)
+# 2. XỬ LÝ NHIỆM VỤ
 # ==============================================================================
 
 async def open_task_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -81,26 +81,20 @@ async def handle_task_actions(update: Update, context: ContextTypes.DEFAULT_TYPE
     data = query.data
     await query.answer()
 
-    # --- KHI ẤN BƯỚC 1 ---
     if data == "task_get_link":
-        # ✅ FIX: Lưu vào user_data thay vì biến global
         context.user_data['temp_task_clicked'] = True
-        
         msg = (
             "🔗 <b>Tham gia kênh dưới đây:</b>\n\n"
             "Hãy ấn vào nút <b>'🚀 Tham gia ngay'</b> bên dưới để vào kênh.\n"
             "Sau đó ấn <b>'Xác nhận'</b> để nhận lượt lưu."
         )
-        
         keyboard = [
             [InlineKeyboardButton("🚀 Tham gia ngay ", url=f"https://t.me/+FLoRiJiPtUJhNjhl")],
             [InlineKeyboardButton("✅ Bước 2: Xác nhận đã vào", callback_data="task_confirm")]
         ]
         await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
-    # --- KHI ẤN BƯỚC 2 ---
     elif data == "task_confirm":
-        # ✅ FIX: Check từ user_data
         if not context.user_data.get('temp_task_clicked'):
             await context.bot.send_message(chat_id=user_id, text="❌ <b>Lỗi:</b> Bạn chưa tham gia kênh <b>'Bước 1'</b>!", parse_mode="HTML")
             return
@@ -111,7 +105,7 @@ async def handle_task_actions(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         await add_credit(user_id, 1)
         await mark_daily_task_done(user_id)
-        context.user_data['temp_task_clicked'] = False # Reset
+        context.user_data['temp_task_clicked'] = False
 
         await query.edit_message_text(
             "🎉 <b>XÁC NHẬN THÀNH CÔNG!</b>\n\n"
@@ -121,13 +115,15 @@ async def handle_task_actions(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
 
 # ==============================================================================
-# 3. LOGIC TẢI VIDEO
+# 3. LOGIC TẢI VIDEO (CHẾ ĐỘ DEBUG SOI LỖI)
 # ==============================================================================
 
 async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    alias = query.data.split("_")[1]
+    
+    # Lấy ID từ nút bấm
+    alias = query.data.replace("dl_", "").strip() 
     
     try:
         credits = await get_credits(user_id)
@@ -135,23 +131,28 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if credits <= 0:
             await query.answer(text="❌ Hết lượt tải miễn phí!", show_alert=True)
-            ref_link = f"https://t.me/{context.bot.username}?start=ref_{user_id}"
-            share_text = "--VideoHot--"
-            msg = "<b>⛔️Huhu, hết lượt lưu rồi!</b>\nKiếm thêm ngay :"
-            keyboard = [
-                [InlineKeyboardButton("🔗 Chia sẻ (+1 lượt/người)", url=f"https://t.me/share/url?url={ref_link}&text={share_text}")],
-                [InlineKeyboardButton("🎁 Nhận 1 lượt mỗi ngày", callback_data="task_open")]
-            ]
-            await context.bot.send_message(chat_id=query.message.chat_id, text=msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
             return
 
-        await query.answer(text="✅ Đang gửi video...")
+        await query.answer(text="🔍 Đang tìm dữ liệu...")
 
-        shared_url = f"{FIREBASE_URL}/{alias}.json"
-        res = await asyncio.to_thread(requests.get, shared_url)
-        data = res.json()
+        # --- DEBUG MODE BẮT ĐẦU ---
+        # 1. Thử tìm trong thư mục /shared/
+        url_1 = f"{FIREBASE_URL}/shared/{alias}.json"
+        res1 = await asyncio.to_thread(requests.get, url_1)
+        data = res1.json()
+        debug_msg = f"🔍 <b>DEBUG REPORT:</b>\n🆔 ID: <code>{alias}</code>\n"
+        debug_msg += f"🔗 URL 1: <code>.../shared/{alias}.json</code> -> {'✅ CÓ' if data else '❌ KHÔNG'}\n"
 
-        if res.status_code == 200 and data:
+        # 2. Nếu không thấy, tìm ở thư mục gốc
+        if not data:
+            url_2 = f"{FIREBASE_URL}/{alias}.json"
+            res2 = await asyncio.to_thread(requests.get, url_2)
+            data = res2.json()
+            debug_msg += f"🔗 URL 2: <code>.../{alias}.json</code> -> {'✅ CÓ' if data else '❌ KHÔNG'}\n"
+
+        # 3. XỬ LÝ KẾT QUẢ
+        if data:
+            # Nếu tìm thấy -> Gửi bình thường
             if await deduct_credit(user_id):
                 new_credits = credits - 1
                 
@@ -181,10 +182,12 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ]
                 await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
         else:
-            await context.bot.send_message(chat_id=query.message.chat_id, text="❌ Data lỗi.")
+            # 🔥 NẾU LỖI -> GỬI BÁO CÁO DEBUG CHO NGƯỜI DÙNG
+            debug_msg += f"\n❌ <b>KẾT LUẬN:</b> Không tìm thấy dữ liệu đâu cả."
+            await context.bot.send_message(chat_id=query.message.chat_id, text=debug_msg, parse_mode="HTML")
             
     except Exception as e:
-        print(f"Lỗi: {e}")
+        await context.bot.send_message(chat_id=query.message.chat_id, text=f"❌ Lỗi Code: {e}")
 
 async def delete_msg_job(context: ContextTypes.DEFAULT_TYPE):
     try: await context.bot.delete_message(chat_id=context.job.chat_id, message_id=context.job.data)
