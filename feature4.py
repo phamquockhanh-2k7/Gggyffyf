@@ -46,7 +46,6 @@ async def check_full_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         data = res.json()
         total_count = len(data)
         
-        # Thống kê
         group_stats = {}
         for uid, info in data.items():
             source = info.get('from_source', 'Không rõ')
@@ -68,20 +67,22 @@ async def check_full_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Lỗi: {e}")
 
 # ==============================================================================
-# 3. GỬI TIN NHẮN (CHẠY NGẦM - NON-BLOCKING)
+# 3. GỬI TIN NHẮN (LIVE UPDATE - 30S/LẦN)
 # ==============================================================================
 
 async def background_sender(context, chat_id, message_to_copy, user_ids):
-    """Hàm này chạy ngầm để không làm đơ bot"""
     success = 0
     blocked = 0
     total = len(user_ids)
     start_time = time.time()
-
-    # Gửi tin báo bắt đầu (Cập nhật trạng thái sau mỗi 100 người)
+    
+    # ⏰ Mốc thời gian lần cập nhật cuối cùng
+    last_update_time = time.time()
+    
+    # Gửi tin nhắn khởi đầu
     status_msg = await context.bot.send_message(
         chat_id=chat_id, 
-        text=f"🚀 <b>Bắt đầu chạy ngầm:</b> 0/{total}",
+        text=f"🚀 <b>Đang khởi động chiến dịch...</b>\nTarget: {total} người.",
         parse_mode="HTML"
     )
 
@@ -93,14 +94,11 @@ async def background_sender(context, chat_id, message_to_copy, user_ids):
                 message_id=message_to_copy.message_id
             )
             success += 1
-            # Nghỉ ngắn để hạn chế FloodWait
             await asyncio.sleep(0.04) 
 
         except FloodWait as e:
-            # 🔥 QUAN TRỌNG: Nếu bị phạt, Bot sẽ ngủ đúng thời gian phạt
-            print(f"⚠️ FloodWait: Bị phạt ngủ {e.value} giây...")
-            await asyncio.sleep(e.value + 1) # Ngủ thêm 1s cho chắc
-            # Thử gửi lại sau khi ngủ dậy
+            print(f"⚠️ FloodWait: Ngủ {e.value}s...")
+            await asyncio.sleep(e.value + 1)
             try:
                 await context.bot.copy_message(
                     chat_id=int(user_id),
@@ -108,35 +106,47 @@ async def background_sender(context, chat_id, message_to_copy, user_ids):
                     message_id=message_to_copy.message_id
                 )
                 success += 1
-            except: 
-                blocked += 1
+            except: blocked += 1
 
         except (Forbidden, BadRequest):
             blocked += 1
-        except Exception as e:
-            print(f"Lỗi gửi {user_id}: {e}")
+        except Exception:
             blocked += 1
         
-        # Cập nhật tiến độ mỗi 200 người (để đỡ spam API sửa tin nhắn)
-        if i % 200 == 0 and i > 0:
+        # 🔥 LOGIC MỚI: CẬP NHẬT MỖI 30 GIÂY
+        current_time = time.time()
+        # Nếu đã qua 30 giây KỂ TỪ LẦN CẬP NHẬT CUỐI - HOẶC - là người cuối cùng
+        if (current_time - last_update_time >= 30) or (i + 1) == total:
             try:
-                await status_msg.edit_text(f"🚀 <b>Tiến độ:</b> {i}/{total}\n✅ Gửi: {success} | ❌ Lỗi: {blocked}", parse_mode="HTML")
-            except: pass
+                percent = int((i + 1) / total * 100)
+                bar = "█" * (percent // 10) + "░" * (10 - (percent // 10))
+                
+                await status_msg.edit_text(
+                    f"🚀 <b>ĐANG GỬI TIN NHẮN...</b>\n"
+                    f"➖➖➖➖➖➖➖➖\n"
+                    f"📊 Tiến độ: <b>{percent}%</b>\n"
+                    f"[{bar}] {i+1}/{total}\n\n"
+                    f"✅ Thành công: <b>{success}</b>\n"
+                    f"🚫 Thất bại: <b>{blocked}</b>\n"
+                    f"⏳ Đang chạy...",
+                    parse_mode="HTML"
+                )
+                # Reset đồng hồ đếm ngược
+                last_update_time = current_time
+            except Exception:
+                pass
 
     # Báo cáo cuối cùng
     duration = int(time.time() - start_time)
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text=(
-            f"✅ <b>HOÀN TẤT CHIẾN DỊCH</b>\n"
-            f"⏱ Thời gian: {duration} giây\n"
-            f"➖➖➖➖➖➖➖➖\n"
-            f"🟢 Thành công: <b>{success}</b>\n"
-            f"🔴 Thất bại: <b>{blocked}</b> (Block/Die)"
-        ),
+    await status_msg.edit_text(
+        f"✅ <b>CHIẾN DỊCH HOÀN TẤT!</b>\n"
+        f"⏱ Thời gian: {duration} giây\n"
+        f"➖➖➖➖➖➖➖➖\n"
+        f"👥 Tổng gửi: <b>{total}</b>\n"
+        f"🟢 Thành công: <b>{success}</b>\n"
+        f"🔴 Thất bại: <b>{blocked}</b> (Block/Die/Bot Kicked)",
         parse_mode="HTML"
     )
-
 
 async def send_to_full_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.reply_to_message:
@@ -146,20 +156,18 @@ async def send_to_full_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Lấy danh sách ID
     url = f"{BASE_DB_URL}/IDUser.json"
     try:
-        status_init = await update.message.reply_text("⏳ Đang tải danh sách ID...")
+        init_msg = await update.message.reply_text("⏳ Đang tải danh sách ID...")
         res = await asyncio.to_thread(requests.get, url)
         
         if res.status_code != 200 or not res.json():
-            await status_init.edit_text("❌ Danh sách trống.")
+            await init_msg.edit_text("❌ Danh sách trống.")
             return
             
         user_ids = list(res.json().keys())
         total = len(user_ids)
         
-        await status_init.edit_text(f"✅ Đã tải {total} ID. Bot sẽ gửi ngầm, bạn có thể dùng lệnh khác bình thường.")
+        await init_msg.delete()
 
-        # 🔥 CHẠY NGẦM: Dùng create_task để tách luồng
-        # Bot sẽ không chờ gửi xong mới trả lời lệnh khác
         asyncio.create_task(
             background_sender(
                 context, 
