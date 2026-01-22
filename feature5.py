@@ -6,11 +6,6 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 
 # ==============================================================================
-# 🔐 CẤU HÌNH BẢO MẬT
-# ==============================================================================
-IS_SYSTEM_ACTIVE = False 
-
-# ==============================================================================
 # ⚙️ CẤU HÌNH DATABASE
 # ==============================================================================
 BASE_URL = "https://bot-telegram-99852-default-rtdb.firebaseio.com"
@@ -20,21 +15,34 @@ RETENTION_PERIOD = 259200
 ALBUM_BUFFER = {}
 
 # ==============================================================================
-# 0. HỆ THỐNG KÍCH HOẠT
+# 0. HỆ THỐNG KÍCH HOẠT (LƯU THEO USER)
 # ==============================================================================
+
 async def active_system(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global IS_SYSTEM_ACTIVE
-    IS_SYSTEM_ACTIVE = True
-    await update.message.reply_text("🔓 **SYSTEM UNLOCKED!**", parse_mode="Markdown")
+    """Lệnh này chỉ mở khóa cho CHÍNH NGƯỜI GÕ"""
+    # Lưu trạng thái 'active' vào bộ nhớ riêng của người dùng này
+    context.user_data['is_system_active'] = True
+    
+    await update.message.reply_text(
+        "🔓 **ĐÃ MỞ KHÓA (Cho riêng bạn)!**\n"
+        "👉 Giờ bạn có thể điều khiển Bot.\n"
+        "🚫 Người khác vẫn sẽ thấy Bot không phản hồi.", 
+        parse_mode="Markdown"
+    )
 
 async def lock_system(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global IS_SYSTEM_ACTIVE
-    IS_SYSTEM_ACTIVE = False
-    await update.message.reply_text("🔒 **SYSTEM LOCKED!**", parse_mode="Markdown")
+    """Khóa lại quyền của chính mình"""
+    context.user_data['is_system_active'] = False
+    await update.message.reply_text("🔒 **ĐÃ KHÓA!** (Bot sẽ lờ bạn đi)", parse_mode="Markdown")
+
+# Hàm kiểm tra nhanh: Người này đã mở khóa chưa?
+def is_user_allowed(context):
+    return context.user_data.get('is_system_active', False)
 
 # ==============================================================================
 # 1. HÀM PHỤ TRỢ (UNDO & CLEAN)
 # ==============================================================================
+
 async def clean_old_history():
     try:
         res = await asyncio.to_thread(requests.get, f"{HISTORY_DB}.json")
@@ -47,7 +55,9 @@ async def clean_old_history():
     except: pass
 
 async def undo_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not IS_SYSTEM_ACTIVE: return
+    # 🔒 CHECK QUYỀN
+    if not is_user_allowed(context): return 
+
     msg = update.effective_message
     
     target_data = None
@@ -82,7 +92,9 @@ async def undo_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await status_msg.edit_text(f"✅ Đã thu hồi {deleted_count} tin nhắn!")
 
 async def add_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not IS_SYSTEM_ACTIVE: return
+    # 🔒 CHECK QUYỀN
+    if not is_user_allowed(context): return
+
     msg = update.effective_message
     if not msg: return
     if update.effective_chat.type == "private":
@@ -94,7 +106,9 @@ async def add_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except: pass
 
 async def show_delete_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not IS_SYSTEM_ACTIVE: return
+    # 🔒 CHECK QUYỀN
+    if not is_user_allowed(context): return
+
     try:
         res = await asyncio.to_thread(requests.get, f"{BROADCAST_DB}.json")
         data = res.json()
@@ -105,7 +119,9 @@ async def show_delete_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except: pass
 
 async def handle_delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not IS_SYSTEM_ACTIVE: return
+    # 🔒 CHECK QUYỀN
+    if not is_user_allowed(context): return
+
     query = update.callback_query
     await query.answer()
     data = query.data
@@ -119,7 +135,9 @@ async def handle_delete_callback(update: Update, context: ContextTypes.DEFAULT_T
         await query.edit_message_text("✅ Đã xóa.")
 
 async def broadcast_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not IS_SYSTEM_ACTIVE: return
+    # 🔒 CHECK QUYỀN
+    if not is_user_allowed(context): return
+
     if not update.message: return
     args = context.args
     if args and args[0].lower() == "on":
@@ -131,21 +149,16 @@ async def broadcast_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("zzz **ĐÃ TẮT.**")
 
 # ==============================================================================
-# 2. XỬ LÝ GỬI TIN & ALBUM (DÙNG API TRỰC TIẾP)
+# 2. XỬ LÝ GỬI TIN & ALBUM (DIRECT API)
 # ==============================================================================
 
 async def send_via_direct_api(token, chat_id, from_chat_id, message_ids):
-    """
-    Hàm này bỏ qua thư viện bot, gửi lệnh thẳng lên Server Telegram.
-    Giúp gửi được Album (forwardMessages) ngay cả khi dùng thư viện cũ.
-    """
     url = f"https://api.telegram.org/bot{token}/forwardMessages"
     payload = {
         "chat_id": chat_id,
         "from_chat_id": from_chat_id,
         "message_ids": message_ids
     }
-    # Gọi API
     response = await asyncio.to_thread(requests.post, url, json=payload)
     return response.json()
 
@@ -168,22 +181,19 @@ async def process_album_later(media_group_id, context, from_chat_id):
     fail_count = 0
     error_details = []
 
-    # Lấy Token của bot để gọi API
     bot_token = context.bot.token 
 
     for target_id in targets.keys():
         try:
-            # 🔥 GỌI HÀM HACK API
+            # GỌI HÀM HACK API
             api_res = await send_via_direct_api(bot_token, target_id, from_chat_id, msg_ids)
             
             if api_res.get("ok"):
-                # Lấy danh sách ID tin nhắn mới từ phản hồi API
                 result_msgs = api_res.get("result", [])
                 new_ids = [m["message_id"] for m in result_msgs]
                 sent_log_for_undo.append({'chat_id': target_id, 'msg_ids': new_ids})
                 success_count += 1
             else:
-                # Nếu Telegram báo lỗi
                 error_desc = api_res.get("description", "Unknown error")
                 fail_count += 1
                 error_details.append(f"- ID {target_id}: {error_desc}")
@@ -192,7 +202,6 @@ async def process_album_later(media_group_id, context, from_chat_id):
             fail_count += 1
             error_details.append(f"- ID {target_id}: {str(e)}")
 
-    # Lưu Undo
     if sent_log_for_undo:
         history_entry = {"time": int(time.time()), "sent_to": sent_log_for_undo}
         for source_id in msg_ids:
@@ -200,8 +209,7 @@ async def process_album_later(media_group_id, context, from_chat_id):
                 await asyncio.to_thread(requests.put, f"{HISTORY_DB}/{source_id}.json", json=history_entry)
             except: pass
 
-    # Báo cáo
-    msg_report = f"✅ **Album ({len(msg_ids)} ảnh) - Direct API:**\n- Thành công: {success_count}\n- Thất bại: {fail_count}"
+    msg_report = f"✅ **Album ({len(msg_ids)} ảnh):**\n- Thành công: {success_count}\n- Thất bại: {fail_count}"
     if error_details:
         msg_report += "\n⚠️ Lỗi: " + error_details[0]
     
@@ -210,9 +218,14 @@ async def process_album_later(media_group_id, context, from_chat_id):
     except: pass
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not IS_SYSTEM_ACTIVE: return 
     msg = update.effective_message
     if not msg or update.effective_chat.type != "private": return
+
+    # 🔒 QUAN TRỌNG: CHECK XEM NGƯỜI NÀY ĐÃ ACTIVE CHƯA
+    # Nếu chưa active -> return luôn (Bot câm)
+    if not is_user_allowed(context):
+        return 
+
     mode = context.user_data.get('current_mode')
 
     if mode != 'BROADCAST':
@@ -227,17 +240,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await msg.reply_text("💡 **MENU:**\n/bc on - Bật\n/activeforadmin - Mở khóa\nForward từ kênh vào đây để thêm.")
         return
 
-    # --- XỬ LÝ GỬI ALBUM ---
+    # --- GỬI ALBUM ---
     if msg.media_group_id:
         group_id = msg.media_group_id
         if group_id not in ALBUM_BUFFER:
             ALBUM_BUFFER[group_id] = []
             asyncio.create_task(process_album_later(group_id, context, msg.chat_id))
-            await msg.reply_text("⏳ Đang xử lý Album (Giữ nguồn)...")
+            await msg.reply_text("⏳ Đang xử lý Album (API)...")
         ALBUM_BUFFER[group_id].append(msg.message_id)
         return
     
-    # --- XỬ LÝ GỬI TIN LẺ (Cũng dùng API luôn cho đồng bộ) ---
+    # --- GỬI TIN LẺ (Cũng dùng API) ---
     try:
         res = await asyncio.to_thread(requests.get, f"{BROADCAST_DB}.json")
         targets = res.json()
@@ -250,7 +263,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     for target_id in targets.keys():
         try:
-            # Dùng forwardMessage (số ít) qua API
             api_res = await asyncio.to_thread(requests.post, 
                 f"https://api.telegram.org/bot{bot_token}/forwardMessage",
                 json={"chat_id": target_id, "from_chat_id": msg.chat_id, "message_id": msg.message_id}
@@ -272,8 +284,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # 3. ĐĂNG KÝ
 # ==============================================================================
 def register_feature5(app):
+    # Lệnh mở khóa (Ai biết lệnh này thì được dùng, người ko biết thì bot câm)
     app.add_handler(CommandHandler("activeforadmin", active_system))
     app.add_handler(CommandHandler("lockbot", lock_system))
+
+    # Các lệnh chức năng (Bên trong đã có check is_user_allowed)
     app.add_handler(CommandHandler("add", add_group))
     app.add_handler(CommandHandler("bc", broadcast_mode))
     app.add_handler(CommandHandler("delete", show_delete_menu))
