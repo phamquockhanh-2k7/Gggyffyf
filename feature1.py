@@ -3,7 +3,6 @@ import string
 import asyncio
 import requests
 from datetime import datetime
-from threading import Lock
 from telegram import (
     Update, InputMediaPhoto, InputMediaVideo, InlineKeyboardButton, InlineKeyboardMarkup
 )
@@ -19,11 +18,6 @@ BASE_URL = "https://bot-telegram-99852-default-rtdb.firebaseio.com"
 FIREBASE_URL = f"{BASE_URL}/shared"
 CHANNEL_USERNAME = "@hoahocduong_vip"
 
-user_files = {}
-user_alias = {}
-user_protection = {}
-data_lock = Lock()
-
 def generate_alias(length=7):
     date_prefix = datetime.now().strftime("%d%m%Y")
     random_part = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(length))
@@ -33,9 +27,14 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
     try:
         user = update.effective_user
         if not user: return False
-        member = await context.bot.get_chat_member(CHANNEL_USERNAME, user.id)
-        if member.status in ['member', 'administrator', 'creator']:
-            return True
+        
+        # Kiểm tra thành viên kênh
+        try:
+            member = await context.bot.get_chat_member(CHANNEL_USERNAME, user.id)
+            if member.status in ['member', 'administrator', 'creator']:
+                return True
+        except:
+            pass # Nếu bot chưa vào kênh hoặc lỗi mạng -> Tạm tha (hoặc xử lý tùy ý)
 
         start_args = context.args
         confirm_link = f"https://t.me/{context.bot.username}?start={start_args[0]}" if start_args else f"https://t.me/{context.bot.username}?start=start"
@@ -61,10 +60,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not await check_channel_membership(update, context): return
     
     user_id = update.effective_user.id
-    protect = user_protection.get(user_id, True)
     
+    # Init Credits
     existing_user_data = await get_credits(user_id)
     current_credits = await init_user_if_new(user_id)
+    
+    # Lấy chế độ bảo vệ từ bot_data (mặc định True)
+    protect = context.user_data.get('user_protection', True)
     
     ref_link = f"https://t.me/{context.bot.username}?start=ref_{user_id}"
     share_text = "--🔥Free100Video18+ỞĐây💪--"
@@ -94,7 +96,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"Bạn hiện đang có {current_credits} lượt lưu nội dung.", reply_markup=reply_markup)
             return
 
-        # --- XỬ LÝ LẤY NỘI DUNG (VIDEO/ẢNH) ---
+        # --- XỬ LÝ LẤY NỘI DUNG ---
         alias = command
         url = f"{FIREBASE_URL}/{alias}.json"
         try:
@@ -135,21 +137,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 for m in msgs_to_delete:
                     context.job_queue.run_once(delete_msg_job, 86400, data=m.message_id, chat_id=update.effective_chat.id)
 
-                # ==================================================================
-                # 🔥 TÍNH NĂNG MỚI: TỰ ĐỘNG RÚT GỌN LINK START NẾU /API ON
-                # ==================================================================
+                # --- AUTO API SHORTEN ---
                 if context.user_data.get('current_mode') == 'API':
-                    # 1. Tạo lại cái link Start gốc
                     bot_username = context.bot.username
                     start_link_full = f"https://t.me/{bot_username}?start={alias}"
-
-                    # 2. Gọi hàm xử lý từ feature2 (Import ở đây để tránh lỗi vòng lặp)
-                    from feature2 import generate_shortened_content
                     
-                    # 3. Chờ rút gọn và gửi kết quả
+                    # Import động để tránh circular import
+                    from feature2 import generate_shortened_content
                     shortened_text = await generate_shortened_content(start_link_full)
                     
-                    # 4. Gửi kết quả (Dạng code block để copy)
                     await update.message.reply_text(f"🚀 **AUTO API:**\nLink gốc: {start_link_full}", disable_web_page_preview=True)
                     await update.message.reply_text(f"<pre>{shortened_text}</pre>", parse_mode="HTML")
 
@@ -165,9 +161,16 @@ async def newlink(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not await check_channel_membership(update, context): return
     user_id = update.effective_user.id
     context.user_data['current_mode'] = 'STORE'
-    with data_lock:
-        user_files[user_id] = []
-        user_alias[user_id] = generate_alias()
+    
+    # ✅ FIX: DÙNG BOT_DATA THAY VÌ GLOBAL
+    if 'storage_files' not in context.bot_data:
+        context.bot_data['storage_files'] = {}
+    if 'storage_alias' not in context.bot_data:
+        context.bot_data['storage_alias'] = {}
+
+    context.bot_data['storage_files'][user_id] = []
+    context.bot_data['storage_alias'][user_id] = generate_alias()
+    
     await update.message.reply_text("✅ Đã vào chế độ lưu trữ. Hãy gửi Ảnh/Video, xong nhắn /done.")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -175,23 +178,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return 
 
     user_id = update.effective_user.id
-    with data_lock:
-        if user_id not in user_files: return
-        entry = None
-        if update.message.photo: entry = {"file_id": update.message.photo[-1].file_id, "type": "photo"}
-        elif update.message.video: entry = {"file_id": update.message.video.file_id, "type": "video"}
-        elif update.message.text: entry = {"file_id": update.message.text, "type": "text"}
-        if entry and entry not in user_files[user_id]:
-            user_files[user_id].append(entry)
+    # ✅ FIX: Lấy data từ bot_data
+    storage_files = context.bot_data.get('storage_files', {})
+    
+    if user_id not in storage_files: return
+
+    entry = None
+    if update.message.photo: entry = {"file_id": update.message.photo[-1].file_id, "type": "photo"}
+    elif update.message.video: entry = {"file_id": update.message.video.file_id, "type": "video"}
+    elif update.message.text: entry = {"file_id": update.message.text, "type": "text"}
+    
+    if entry:
+        context.bot_data['storage_files'][user_id].append(entry)
 
 async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get('current_mode') != 'STORE': return
     user_id = update.effective_user.id
-    with data_lock:
-        files = user_files.get(user_id, [])
-        alias = user_alias.get(user_id)
-        user_files.pop(user_id, None)
-        user_alias.pop(user_id, None)
+    
+    # ✅ FIX: Lấy data từ bot_data
+    files = context.bot_data.get('storage_files', {}).get(user_id, [])
+    alias = context.bot_data.get('storage_alias', {}).get(user_id)
+    
+    # Dọn dẹp sau khi lấy
+    if 'storage_files' in context.bot_data: context.bot_data['storage_files'].pop(user_id, None)
+    if 'storage_alias' in context.bot_data: context.bot_data['storage_alias'].pop(user_id, None)
+    
     if not files or not alias:
         await update.message.reply_text("❌ Bạn chưa gửi nội dung nào.")
         return
@@ -206,9 +217,9 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def sigmaboy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not await check_channel_membership(update, context): return
-    user_id = update.effective_user.id
+    # Lưu cài đặt bảo vệ vào user_data (riêng từng người dùng)
     args = context.args
-    user_protection[user_id] = args[0].lower() == "off" if args else True
+    context.user_data['user_protection'] = args[0].lower() == "off" if args else True
     await update.message.reply_text("⚙️ Cấu hình bảo mật đã được cập nhật.")
 
 def register_feature1(app):
