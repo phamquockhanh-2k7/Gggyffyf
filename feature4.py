@@ -3,7 +3,8 @@ import requests
 import time
 from telegram import Update
 from telegram.ext import ContextTypes, ChatJoinRequestHandler, CommandHandler
-from telegram.error import Forbidden, BadRequest, FloodWait
+# 👇 ĐÃ SỬA DÒNG NÀY: Thay FloodWait bằng RetryAfter
+from telegram.error import Forbidden, BadRequest, RetryAfter
 
 # ==============================================================================
 # CẤU HÌNH
@@ -96,9 +97,10 @@ async def background_sender(context, chat_id, message_to_copy, user_ids):
             success += 1
             await asyncio.sleep(0.04) 
 
-        except FloodWait as e:
-            print(f"⚠️ FloodWait: Ngủ {e.value}s...")
-            await asyncio.sleep(e.value + 1)
+        # 👇 ĐÃ SỬA KHỐI NÀY: Dùng RetryAfter và e.retry_after
+        except RetryAfter as e:
+            print(f"⚠️ FloodWait: Ngủ {e.retry_after}s...")
+            await asyncio.sleep(e.retry_after + 1)
             try:
                 await context.bot.copy_message(
                     chat_id=int(user_id),
@@ -113,9 +115,8 @@ async def background_sender(context, chat_id, message_to_copy, user_ids):
         except Exception:
             blocked += 1
         
-        # 🔥 LOGIC MỚI: CẬP NHẬT MỖI 30 GIÂY
+        # LOGIC MỚI: CẬP NHẬT MỖI 30 GIÂY
         current_time = time.time()
-        # Nếu đã qua 30 giây KỂ TỪ LẦN CẬP NHẬT CUỐI - HOẶC - là người cuối cùng
         if (current_time - last_update_time >= 30) or (i + 1) == total:
             try:
                 percent = int((i + 1) / total * 100)
@@ -131,7 +132,6 @@ async def background_sender(context, chat_id, message_to_copy, user_ids):
                     f"⏳ Đang chạy...",
                     parse_mode="HTML"
                 )
-                # Reset đồng hồ đếm ngược
                 last_update_time = current_time
             except Exception:
                 pass
