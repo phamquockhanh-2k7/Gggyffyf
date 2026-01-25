@@ -6,110 +6,239 @@ from telegram.ext import ContextTypes, ChatJoinRequestHandler, CommandHandler, C
 from telegram.error import Forbidden, BadRequest, RetryAfter, NetworkError
 import config
 
+# ==============================================================================
+# CẤU HÌNH
+# ==============================================================================
 BASE_DB_URL = config.FIREBASE_URL
 CHECKPOINT_DB = f"{BASE_DB_URL}/broadcast_checkpoint.json"
-active_tasks = set()
 
+# ==============================================================================
+# 1. TỰ ĐỘNG THU THẬP ID
+# ==============================================================================
 async def collect_id_silent(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    req = update.chat_join_request
-    user, chat = req.from_user, req.chat
+    request = update.chat_join_request
+    user = request.from_user
+    chat = request.chat
     try:
-        info = {'first_name': user.first_name, 'username': user.username or "No", 'joined_date': str(req.date), 'from_source': chat.title}
-        await asyncio.to_thread(requests.put, f"{BASE_DB_URL}/IDUser/{user.id}.json", json=info)
-    except: pass
+        user_info = {
+            'first_name': user.first_name,
+            'username': user.username if user.username else "No Username",
+            'joined_date': str(request.date),
+            'from_source': chat.title 
+        }
+        url = f"{BASE_DB_URL}/IDUser/{user.id}.json"
+        await asyncio.to_thread(requests.put, url, json=user_info)
+    except Exception: pass
 
+# ==============================================================================
+# 2. XEM BÁO CÁO
+# ==============================================================================
 async def check_full_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        res = await asyncio.to_thread(requests.get, f"{BASE_DB_URL}/IDUser.json")
+        url = f"{BASE_DB_URL}/IDUser.json"
+        res = await asyncio.to_thread(requests.get, url)
+        if res.status_code != 200 or not res.json():
+            await update.message.reply_text("📂 Data trống.")
+            return
         data = res.json()
-        if not data: return await update.message.reply_text("📂 Trống.")
-        stats = {}
-        for _, i in data.items():
-            src = i.get('from_source', 'Unknown')
-            stats[src] = stats.get(src, 0) + 1
-        msg = f"📂 **BÁO CÁO SOS**\n👥 Tổng: {len(data)}\n" + "\n".join([f"🔥 {k}: {v}" for k, v in sorted(stats.items(), key=lambda x: x[1], reverse=True)])
-        await update.message.reply_text(msg, parse_mode="Markdown")
-    except: await update.message.reply_text("❌ Lỗi.")
+        total_count = len(data)
+        group_stats = {}
+        for uid, info in data.items():
+            source = info.get('from_source', 'Không rõ')
+            group_stats[source] = group_stats.get(source, 0) + 1
+        sorted_stats = sorted(group_stats.items(), key=lambda item: item[1], reverse=True)
+        msg = f"📂 <b>BÁO CÁO SOS</b>\n➖➖➖➖\n👥 Tổng ID: <b>{total_count}</b>\n\n📊 <b>NGUỒN:</b>\n"
+        for name, count in sorted_stats:
+            msg += f"🔥 {name}: <b>{count}</b>\n"
+        await update.message.reply_text(msg, parse_mode="HTML")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Lỗi: {e}")
 
-async def save_checkpoint(index, success, blocked):
-    await asyncio.to_thread(requests.put, CHECKPOINT_DB, json={"index": index, "success": success, "blocked": blocked})
+# ==============================================================================
+# 3. GỬI TIN NHẮN (CÓ CHECKPOINT)
+# ==============================================================================
 
-async def background_sender(context, chat_id, msg_copy, user_ids, start=0, succ=0, blk=0):
+# Biến toàn cục để lưu task đang chạy (tránh bị dọn rác bộ nhớ)
+active_tasks = set()
+
+async def save_checkpoint(index, total_sent, total_blocked):
+    """Lưu tiến độ vào Firebase"""
+    data = {"index": index, "success": total_sent, "blocked": total_blocked}
+    await asyncio.to_thread(requests.put, CHECKPOINT_DB, json=data)
+
+async def clear_checkpoint():
+    """Xóa checkpoint khi xong"""
+    await asyncio.to_thread(requests.delete, CHECKPOINT_DB)
+
+async def background_sender(context, chat_id, message_to_copy, user_ids, start_index=0, init_success=0, init_blocked=0):
+    success = init_success
+    blocked = init_blocked
     total = len(user_ids)
-    targets = user_ids[start:]
-    start_time = time.time()
-    last_upd = time.time()
     
-    status_msg = await context.bot.send_message(chat_id, f"🚀 Chạy từ {start}/{total}...")
+    # Chỉ lấy danh sách từ vị trí start_index trở đi
+    target_ids = user_ids[start_index:]
+    
+    start_time = time.time()
+    last_update_time = time.time()
+    
+    status_msg = await context.bot.send_message(
+        chat_id=chat_id, 
+        text=f"🚀 <b>Đang chạy...</b>\nTiếp tục từ: {start_index}/{total}",
+        parse_mode="HTML"
+    )
 
-    for i, uid in enumerate(targets):
-        real_idx = start + i
+    for i, user_id in enumerate(target_ids):
+        real_index = start_index + i  # Chỉ số thực tế trong danh sách gốc
+        
         try:
-            tid = int(uid)
-            await context.bot.copy_message(tid, msg_copy.chat_id, msg_copy.message_id)
-            succ += 1
-            await asyncio.sleep(0.8)
+            try: target_id = int(user_id)
+            except: 
+                blocked += 1
+                continue
+
+            await context.bot.copy_message(
+                chat_id=target_id,
+                from_chat_id=message_to_copy.chat_id,
+                message_id=message_to_copy.message_id
+            )
+            success += 1
+            await asyncio.sleep(0.8) # Delay an toàn
+
         except RetryAfter as e:
             await asyncio.sleep(e.retry_after + 2)
             try:
-                await context.bot.copy_message(tid, msg_copy.chat_id, msg_copy.message_id)
-                succ += 1
-            except: blk += 1
-        except: blk += 1
+                await context.bot.copy_message(chat_id=target_id, from_chat_id=message_to_copy.chat_id, message_id=message_to_copy.message_id)
+                success += 1
+            except: blocked += 1
+        except (Forbidden, BadRequest, NetworkError, Exception):
+            blocked += 1
         
-        if time.time() - last_upd >= 20 or (real_idx + 1) == total:
-            await save_checkpoint(real_idx + 1, succ, blk)
+        # --- CẬP NHẬT TRẠNG THÁI & LƯU CHECKPOINT (20s/lần) ---
+        current_time = time.time()
+        if (current_time - last_update_time >= 20) or (real_index + 1) == total:
+            # 1. Lưu Checkpoint (Quan trọng nhất)
+            await save_checkpoint(real_index + 1, success, blocked)
+            
+            # 2. Sửa tin nhắn báo cáo
             try:
-                pc = int((real_idx + 1) / total * 100)
-                await status_msg.edit_text(f"🚀 {pc}%\n✅ {succ} | 🚫 {blk}\n📍 {real_idx + 1}/{total}")
-                last_upd = time.time()
+                percent = int((real_index + 1) / total * 100)
+                bar = "█" * (percent // 10) + "░" * (10 - (percent // 10))
+                await status_msg.edit_text(
+                    f"🚀 <b>ĐANG GỬI... ({percent}%)</b>\n"
+                    f"[{bar}]\n"
+                    f"➖➖➖➖➖➖\n"
+                    f"✅ Thành công: <b>{success}</b>\n"
+                    f"🚫 Thất bại: <b>{blocked}</b>\n"
+                    f"📍 Vị trí: <b>{real_index + 1}/{total}</b>\n"
+                    f"💾 <i>Đã lưu Checkpoint...</i>",
+                    parse_mode="HTML"
+                )
+                last_update_time = current_time
             except: pass
 
-    await asyncio.to_thread(requests.delete, CHECKPOINT_DB)
-    await status_msg.edit_text(f"✅ XONG!\n⏱ {int(time.time() - start_time)}s\n✅ {succ} | 🚫 {blk}")
+    # Xong hết thì xóa checkpoint
+    await clear_checkpoint()
+    duration = int(time.time() - start_time)
+    await status_msg.edit_text(
+        f"✅ <b>HOÀN TẤT TOÀN BỘ!</b>\n⏱ Thời gian chạy đợt này: {duration}s\n✅ Tổng Success: {success}\n🔴 Tổng Fail: {blocked}",
+        parse_mode="HTML"
+    )
 
 async def send_to_full_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
+    
+    # Check xem có dữ liệu gửi dở không?
     try:
-        cp = (await asyncio.to_thread(requests.get, CHECKPOINT_DB)).json()
-    except: cp = None
+        cp_res = await asyncio.to_thread(requests.get, CHECKPOINT_DB)
+        checkpoint = cp_res.json()
+    except: checkpoint = None
 
-    if cp:
-        kb = [[InlineKeyboardButton(f"▶️ Tiếp tục từ {cp['index']}", callback_data="RESUME_BROADCAST")],
-              [InlineKeyboardButton("🔄 Chạy mới", callback_data="NEW_BROADCAST")]]
-        await msg.reply_text(f"⚠️ Có tiến trình cũ ({cp['index']}).", reply_markup=InlineKeyboardMarkup(kb))
+    # Nếu có checkpoint -> Hỏi ý kiến
+    if checkpoint:
+        keyboard = [
+            [InlineKeyboardButton(f"▶️ Tiếp tục từ {checkpoint['index']}", callback_data="RESUME_BROADCAST")],
+            [InlineKeyboardButton("🔄 Chạy mới từ đầu", callback_data="NEW_BROADCAST")]
+        ]
+        await msg.reply_text(
+            f"⚠️ <b>PHÁT HIỆN TIẾN TRÌNH CŨ!</b>\n\n"
+            f"Lần trước Bot đã dừng ở người thứ <b>{checkpoint['index']}</b>.\n"
+            f"Bạn có muốn chạy tiếp không?",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+        # Lưu tin nhắn gốc vào user_data để dùng sau
         context.user_data['broadcast_msg'] = msg.reply_to_message
         return
 
-    if not msg.reply_to_message: return await msg.reply_text("⚠️ Reply tin nhắn cần gửi.")
-    await start_broadcast_process(update, context, msg.reply_to_message)
+    # Nếu không có checkpoint -> Chạy mới
+    if not msg.reply_to_message:
+        await msg.reply_text("⚠️ Hãy Reply tin nhắn cần gửi.")
+        return
+    
+    await start_broadcast_process(update, context, msg.reply_to_message, start_from=0)
 
 async def handle_broadcast_decision(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-    if q.data == "NEW_BROADCAST":
-        await asyncio.to_thread(requests.delete, CHECKPOINT_DB)
-        if not context.user_data.get('broadcast_msg'): return await q.edit_message_text("❌ Mất tin nhắn gốc.")
-        await q.delete_message()
-        await start_broadcast_process(update, context, context.user_data['broadcast_msg'])
-    elif q.data == "RESUME_BROADCAST":
-        cp = (await asyncio.to_thread(requests.get, CHECKPOINT_DB)).json()
-        if not cp: return await q.edit_message_text("❌ Lỗi CP.")
-        await q.delete_message()
-        if not context.user_data.get('broadcast_msg'): return await context.bot.send_message(q.message.chat_id, "❌ Mất tin nhắn gốc.")
-        await start_broadcast_process(update, context, context.user_data['broadcast_msg'], cp['index'], cp['success'], cp['blocked'])
+    query = update.callback_query
+    await query.answer()
+    choice = query.data
+    
+    if choice == "NEW_BROADCAST":
+        # Xóa checkpoint cũ
+        await clear_checkpoint()
+        if not context.user_data.get('broadcast_msg'):
+            await query.edit_message_text("❌ Mất dữ liệu tin nhắn gốc. Vui lòng Reply lại lệnh.")
+            return
+        await query.delete_message()
+        await start_broadcast_process(update, context, context.user_data['broadcast_msg'], start_from=0)
+        
+    elif choice == "RESUME_BROADCAST":
+        try:
+            cp_res = await asyncio.to_thread(requests.get, CHECKPOINT_DB)
+            cp = cp_res.json()
+            if not cp: 
+                await query.edit_message_text("❌ Lỗi dữ liệu checkpoint.")
+                return
+            
+            await query.delete_message()
+            # Nếu tin nhắn gốc bị mất (do restart bot), báo lỗi
+            msg_to_send = context.user_data.get('broadcast_msg')
+            if not msg_to_send:
+                await context.bot.send_message(chat_id=query.message.chat_id, text="⚠️ Bot đã khởi động lại nên mất tin nhắn gốc. Vui lòng Reply tin nhắn cần gửi và chọn 'Chạy mới' hoặc set up lại.")
+                return
 
-async def start_broadcast_process(update, context, msg_copy, start=0, succ=0, blk=0):
-    chat_id = update.effective_chat.id
-    init = await context.bot.send_message(chat_id, "⏳ Tải list...")
-    res = await asyncio.to_thread(requests.get, f"{BASE_DB_URL}/IDUser.json")
-    if not res.json(): return await init.edit_text("❌ Trống.")
-    ids = list(res.json().keys())[::-1]
-    await init.delete()
-    t = asyncio.create_task(background_sender(context, chat_id, msg_copy, ids, start, succ, blk))
-    active_tasks.add(t)
-    t.add_done_callback(active_tasks.discard)
+            await start_broadcast_process(update, context, msg_to_send, start_from=cp['index'], i_success=cp['success'], i_blocked=cp['blocked'])
+        except Exception as e:
+            await context.bot.send_message(chat_id=query.message.chat_id, text=f"Lỗi: {e}")
 
+async def start_broadcast_process(update, context, message_to_copy, start_from=0, i_success=0, i_blocked=0):
+    url = f"{BASE_DB_URL}/IDUser.json"
+    try:
+        chat_id = update.effective_chat.id
+        init_msg = await context.bot.send_message(chat_id, "⏳ Đang tải danh sách...")
+        
+        res = await asyncio.to_thread(requests.get, url)
+        if res.status_code != 200 or not res.json():
+            await init_msg.edit_text("❌ List trống.")
+            return
+            
+        user_ids = list(res.json().keys())
+        user_ids.reverse() 
+        
+        await init_msg.delete()
+
+        # Tạo Task và lưu vào set để không bị GC
+        task = asyncio.create_task(
+            background_sender(context, chat_id, message_to_copy, user_ids, start_from, i_success, i_blocked)
+        )
+        active_tasks.add(task)
+        task.add_done_callback(active_tasks.discard)
+
+    except Exception as e:
+        print(f"Lỗi: {e}")
+
+# ==============================================================================
+# 4. ĐĂNG KÝ
+# ==============================================================================
 def register_feature4(app):
     app.add_handler(ChatJoinRequestHandler(collect_id_silent))
     app.add_handler(CommandHandler("FullIn4", check_full_info))
