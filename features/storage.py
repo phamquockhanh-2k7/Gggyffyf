@@ -6,12 +6,8 @@ import string
 import asyncio
 import requests
 from datetime import datetime
-from telegram import (
-    Update, InputMediaPhoto, InputMediaVideo, InlineKeyboardButton, InlineKeyboardMarkup
-)
-from telegram.ext import (
-    CommandHandler, MessageHandler, ContextTypes, filters
-)
+from telegram import Update, InputMediaPhoto, InputMediaVideo, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import CommandHandler, MessageHandler, ContextTypes, filters
 import config 
 
 # Import Relative (dấu chấm)
@@ -36,7 +32,7 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
             if member.status in ['member', 'administrator', 'creator']:
                 return True
         except:
-            pass # Nếu bot chưa vào kênh hoặc lỗi mạng -> Tạm tha
+            pass 
 
         start_args = context.args
         confirm_link = f"https://t.me/{context.bot.username}?start={start_args[0]}" if start_args else f"https://t.me/{context.bot.username}?start=start"
@@ -139,17 +135,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 for m in msgs_to_delete:
                     context.job_queue.run_once(delete_msg_job, 86400, data=m.message_id, chat_id=update.effective_chat.id)
 
-                # --- AUTO API SHORTEN ---
+                # --- AUTO API SHORTEN (ĐÃ SỬA LẠI CHUẨN) ---
                 if context.user_data.get('current_mode') == 'API':
                     bot_username = context.bot.username
                     start_link_full = f"https://t.me/{bot_username}?start={alias}"
                     
-                    # Import động để tránh circular import
+                    # Import động
                     from .shortener import generate_shortened_content
                     shortened_text = await generate_shortened_content(start_link_full)
                     
-                    await update.message.reply_text(f"🚀 **AUTO API:**\nLink gốc: {start_link_full}", disable_web_page_preview=True)
-                    await update.message.reply_text(f"<pre>{shortened_text}</pre>", parse_mode="HTML")
+                    # Dùng Markdown và dấu ` để copy
+                    await update.message.reply_text(f"🚀 **AUTO API:**\nLink gốc: `{start_link_full}`", parse_mode="Markdown")
+                    await update.message.reply_text(shortened_text, parse_mode="Markdown")
 
             else: 
                 await update.message.reply_text("❌ Liên kết không tồn tại hoặc đã bị xóa.")
