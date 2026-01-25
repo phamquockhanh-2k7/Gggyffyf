@@ -1,3 +1,7 @@
+# ================================================================================================
+# FEATURE5: BOT CHUYỂN TIẾP BÀI VIẾT , CÁC LỆNH /ACTIVEFORADMIN (UNLOCKBOT) , /LOCKBOT , 
+#    /ADD (THÊM NHÓM) , /BC ON/OF (BẬT/TẮT BROASTCARD , /DELETE(XÓA KÊNH/NHÓM) , /UNDO (THU HỒI)
+# ================================================================================================
 import asyncio
 import requests
 import time
