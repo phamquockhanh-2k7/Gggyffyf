@@ -3,9 +3,10 @@ import requests
 import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, InputMediaVideo
 from telegram.ext import ContextTypes, CallbackQueryHandler
+import config # Lấy config
 
-# Đường dẫn Firebase
-FIREBASE_URL = "https://bot-telegram-99852-default-rtdb.firebaseio.com"
+# Lấy Firebase URL từ config
+FIREBASE_URL = config.FIREBASE_URL
 
 # ==============================================================================
 # 1. CÁC HÀM XỬ LÝ DATA (FIREBASE)
@@ -88,8 +89,9 @@ async def handle_task_actions(update: Update, context: ContextTypes.DEFAULT_TYPE
             "Hãy ấn vào nút <b>'🚀 Tham gia ngay'</b> bên dưới để vào kênh.\n"
             "Sau đó ấn <b>'Xác nhận'</b> để nhận lượt lưu."
         )
+        # Lấy link từ config
         keyboard = [
-            [InlineKeyboardButton("🚀 Tham gia ngay ", url=f"https://t.me/+FLoRiJiPtUJhNjhl")],
+            [InlineKeyboardButton("🚀 Tham gia ngay ", url=config.JOIN_LINK_CHANNEL)],
             [InlineKeyboardButton("✅ Bước 2: Xác nhận đã vào", callback_data="task_confirm")]
         ]
         await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
