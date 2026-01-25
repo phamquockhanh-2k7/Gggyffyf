@@ -32,6 +32,7 @@ async def generate_shortened_content(url):
         get_short_link(url, config.URL_API_ANON, config.API_KEY_ANON, config.ORIGIN_DOMAIN_ANON, config.DOMAIN_MASK_ANON)
     )
 
+    # Đoạn này dùng Markdown (** in đậm)
     raw_content = (
         f"**Link mua: (rẻ hơn )**\n {t2}\n"
         f"**Link mua:**\n {t3}\n"
@@ -64,9 +65,9 @@ async def handle_api_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     for url in urls:
         content = await generate_shortened_content(url)
-        # --- ĐÃ SỬA Ở DÒNG DƯỚI: Thêm parse_mode="HTML" ---
-        await update.message.reply_text(f"🔗 Link gốc: \n<code>{url}</code>", parse_mode="HTML", disable_web_page_preview=True)
-        await update.message.reply_text(f"<pre>{content}</pre>", parse_mode="HTML")
+        # --- SỬA TẠI ĐÂY: Dùng dấu ` và parse_mode="Markdown" ---
+        await update.message.reply_text(f"🔗 Link gốc: `{url}`", parse_mode="Markdown", disable_web_page_preview=True)
+        await update.message.reply_text(content, parse_mode="Markdown")
         await asyncio.sleep(0.5)
 
 def register_feature2(app):
