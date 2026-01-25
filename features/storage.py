@@ -1,6 +1,9 @@
 # ==============================================================================
 # FEATURE1 : LƯU TRỮ LINK , CÁC LỆNH /start /newlink /done /sigmaboy /profile /cheattogetdownload
 # ==============================================================================
+# ==============================================================================
+# FEATURE1 : LƯU TRỮ LINK , CÁC LỆNH /start /newlink /done /sigmaboy /profile /cheattogetdownload
+# ==============================================================================
 import secrets
 import string
 import asyncio
@@ -144,17 +147,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     from .shortener import generate_shortened_content
                     shortened_text = await generate_shortened_content(start_link_full)
                     
-                    # ✅ SỬ DỤNG HTML ĐỂ KHÔNG BỊ LỖI
-                    # 1. Link Copy: nằm trong thẻ <code>
-                    # 2. Link Click: nằm trần
+                    # ✅ 1. Link Start: 1 dòng copy được, 1 dòng click được
                     msg_links = (
                         f"🚀 <b>AUTO API:</b>\n"
                         f"📋 <b>Copy:</b> <code>{start_link_full}</code>\n"
                         f"🔗 <b>Click:</b> {start_link_full}"
                     )
-                    
                     await update.message.reply_text(msg_links, parse_mode="HTML")
-                    await update.message.reply_text(shortened_text, parse_mode="Markdown")
+                    
+                    # ✅ 2. Caption: Dùng thẻ <pre> để copy nguyên khối (giống bên shortener)
+                    await update.message.reply_text(f"<pre>{shortened_text}</pre>", parse_mode="HTML")
 
             else: 
                 await update.message.reply_text("❌ Liên kết không tồn tại hoặc đã bị xóa.")
