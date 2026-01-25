@@ -23,7 +23,7 @@ REF_LINK_1 = os.getenv("REF_LINK_1", "")
 REF_LINK_2 = os.getenv("REF_LINK_2", "")
 
 # 4. API RÚT GỌN
-# VuotLink
+# VuotLink.
 API_KEY_VUOTLINK = os.getenv("API_KEY_VUOTLINK")
 DOMAIN_MASK_VUOTLINK = os.getenv("DOMAIN_MASK_VUOTLINK")
 URL_API_VUOTLINK = "https://vuotlink.vip/api" # URL gốc của API (ít thay đổi nên để đây cũng được)
