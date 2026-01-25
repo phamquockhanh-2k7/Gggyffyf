@@ -1,3 +1,6 @@
+# ==============================================================================
+# FEATURE2: RÚT GỌN LINK + CAPTION , CÁC LỆNH : /API ON/OFF LINE_50,53
+# ==============================================================================
 import aiohttp
 import re
 import urllib.parse
@@ -61,7 +64,8 @@ async def handle_api_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     for url in urls:
         content = await generate_shortened_content(url)
-        await update.message.reply_text(f"🔗 Link gốc: <code>{url}</code>", disable_web_page_preview=True)
+        # --- ĐÃ SỬA Ở DÒNG DƯỚI: Thêm parse_mode="HTML" ---
+        await update.message.reply_text(f"🔗 Link gốc: \n<code>{url}</code>", parse_mode="HTML", disable_web_page_preview=True)
         await update.message.reply_text(f"<pre>{content}</pre>", parse_mode="HTML")
         await asyncio.sleep(0.5)
 
