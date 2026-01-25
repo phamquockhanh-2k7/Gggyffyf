@@ -4,11 +4,12 @@ import time
 import json
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters
+import config # Lấy config
 
 # ==============================================================================
 # ⚙️ CẤU HÌNH DATABASE
 # ==============================================================================
-BASE_URL = "https://bot-telegram-99852-default-rtdb.firebaseio.com"
+BASE_URL = config.FIREBASE_URL
 BROADCAST_DB = f"{BASE_URL}/broadcast_channels"
 HISTORY_DB = f"{BASE_URL}/broadcast_history"
 RETENTION_PERIOD = 259200 
