@@ -3,25 +3,29 @@ import threading
 from telegram import Update
 from telegram.ext import ApplicationBuilder
 from keep_alive import keep_alive
-import config  # Import file config cùng cấp
+import config  # Import file config
 
-# --- IMPORT TỪ THƯ MỤC FEATURES (Cấu trúc mới) ---
-from features.storage import register_feature1      
-from features.shortener import register_feature2    
-from features.credits import register_feature3      
-from features.sos_tracker import register_feature4  
-from features.broadcast import register_feature5    
+# --- SỬA IMPORT ĐỂ TRỎ VÀO THƯ MỤC FEATURES ---
+from features.storage import register_feature1
+from features.shortener import register_feature2
+from features.credits import register_feature3
+from features.sos_tracker import register_feature4
+from features.broadcast import register_feature5 
 
 # ==============================================================================
 # ⚙️ HÀM KHỞI TẠO VÀ CHẠY HỆ THỐNG
 # ==============================================================================
 async def run_multiple_bots():
-    print(f"🔄 Đang khởi động hệ thống ĐA NHÂN CÁCH (Modular Pro Mode)...")
+    print(f"🔄 Đang khởi động hệ thống ĐA NHÂN CÁCH (List Mode)...")
     apps = []
 
-    # Hàm cài đặt 1 bot
+    # ---------------------------------------------------------
+    # HÀM CÀI ĐẶT 1 CON BOT
+    # ---------------------------------------------------------
     async def setup_one_bot(token, name, bot_type="SOS"):
-        if not token or "TOKEN" in token: return
+        # Bỏ qua nếu token trống hoặc chưa điền
+        if not token or "TOKEN" in token: 
+            return
 
         print(f"🛠 Đang cài đặt {name}...")
         try:
@@ -29,49 +33,68 @@ async def run_multiple_bots():
             
             # --- PHÂN LOẠI TÍNH NĂNG ---
             if bot_type == "MAIN":
+                # ✅ Bot chính: Nạp FULL tính năng
                 register_feature1(app) 
                 register_feature2(app)
                 register_feature3(app)
                 register_feature4(app)
                 register_feature5(app) 
+                
             elif bot_type == "BROADCAST":
+                # Bot Broadcast: Chỉ chạy tính năng 5
                 register_feature5(app) 
-            else: # SOS
+                
+            else: 
+                # Bot SOS: Chỉ chạy tính năng 4
                 register_feature4(app) 
             
+            # Khởi động
             await app.initialize()
             await app.start()
             await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+            
             apps.append(app)
-            print(f"✅ {name}: OK!")
+            print(f"✅ {name}: Đã chạy thành công!")
+            
         except Exception as e:
-            print(f"❌ Lỗi {name}: {e}")
+            print(f"❌ Lỗi cài đặt {name}: {e}")
 
-    # --- CHẠY LIST BOT TỪ CONFIG ---
-    # 1. Main Bots
+    # ---------------------------------------------------------
+    # VÒNG LẶP KHỞI ĐỘNG (DÙNG LIST TỪ CONFIG)
+    # ---------------------------------------------------------
+    
+    # 1. Chạy dàn MAIN
     for i, token in enumerate(config.MAIN_BOT_TOKENS):
-        await setup_one_bot(token, f"👑 MAIN {i+1}", "MAIN")
+        await setup_one_bot(token, f"👑 MAIN BOT {i+1}", bot_type="MAIN")
 
-    # 2. Broadcast Bots
+    # 2. Chạy dàn BROADCAST
     for i, token in enumerate(config.BROADCAST_BOT_TOKENS):
-        await setup_one_bot(token, f"📢 CAST {i+1}", "BROADCAST")
+        await setup_one_bot(token, f"📢 BROADCAST BOT {i+1}", bot_type="BROADCAST")
 
-    # 3. SOS Bots
+    # 3. Chạy dàn SOS
     for i, token in enumerate(config.SOS_BOT_TOKENS):
-        await setup_one_bot(token, f"🚑 SOS {i+1}", "SOS")
+        await setup_one_bot(token, f"🚑 SOS BOT {i+1}", bot_type="SOS")
 
-    print(f"\n🚀 TỔNG: {len(apps)} BOT ĐANG CHẠY.")
-    while True: await asyncio.sleep(1000)
+    print(f"\n🚀 TỔNG KẾT: ĐANG CHẠY {len(apps)} BOT CÙNG LÚC.")
+    
+    # Giữ server sống
+    while True:
+        await asyncio.sleep(1000)
 
+# ==============================================================================
+# KHỐI CHẠY CHÍNH
+# ==============================================================================
 if __name__ == '__main__':
     t = threading.Thread(target=keep_alive)
     t.start()
+    
     try:
         loop = asyncio.get_event_loop()
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        
     try:
         loop.run_until_complete(run_multiple_bots())
     except KeyboardInterrupt:
-        print("🛑 Stop.")
+        print("🛑 Đã dừng Bot.")
