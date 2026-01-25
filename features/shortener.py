@@ -1,6 +1,9 @@
 # ==============================================================================
 # FEATURE2: RÚT GỌN LINK + CAPTION , CÁC LỆNH : /API ON/OFF LINE_50,53
 # ==============================================================================
+# ==============================================================================
+# FEATURE2: RÚT GỌN LINK + CAPTION
+# ==============================================================================
 import aiohttp
 import re
 import urllib.parse
@@ -32,8 +35,7 @@ async def generate_shortened_content(url):
         get_short_link(url, config.URL_API_ANON, config.API_KEY_ANON, config.ORIGIN_DOMAIN_ANON, config.DOMAIN_MASK_ANON)
     )
 
-    # Đã bỏ dấu ** (in đậm) vì khi đưa vào khung Code, in đậm không còn tác dụng
-    # Thay vào đó là văn bản thuần để copy cho dễ
+    # Nội dung Caption (Để dạng văn bản thường để cho vào thẻ PRE)
     raw_content = (
         f"Link mua: (rẻ hơn )\n {t2}\n"
         f"Link mua:\n {t3}\n"
@@ -67,15 +69,16 @@ async def handle_api_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
     for url in urls:
         content = await generate_shortened_content(url)
         
-        # 1. Gửi Link gốc (Vẫn giữ 1 cái copy được, 1 cái click được cho tiện)
+        # 1. Gửi Link gốc:
+        # - Dòng 1: Link thường (Click được)
+        # - Dòng 2: Link trong thẻ <code> (Bấm là Copy)
         msg_links = (
-            f"🔗 <b>Link gốc:</b>\n"
-            f"<code>{url}</code>" 
+            f"🔗 <b>Link gốc:</b> {url}\n\n"
+            f"📋 <b>Copy:</b> <code>{url}</code>" 
         )
         await update.message.reply_text(msg_links, parse_mode="HTML")
         
-        # 2. Gửi Caption (Dùng thẻ <pre> của HTML để tạo khối code lớn, bấm vào là copy cả cục)
-        # Thẻ <pre> giữ nguyên xuống dòng và định dạng
+        # 2. Gửi Caption: Dùng thẻ <pre> để copy nguyên khối
         await update.message.reply_text(f"<pre>{content}</pre>", parse_mode="HTML")
         
         await asyncio.sleep(0.5)
