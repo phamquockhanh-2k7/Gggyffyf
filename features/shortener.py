@@ -66,7 +66,7 @@ async def handle_api_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         content = await generate_shortened_content(url)
         # --- ĐÃ SỬA: Xóa bỏ disable_web_page_preview để tránh lỗi ---
         # Dùng Markdown và dấu huyền (`) để tạo ô copy
-        await update.message.reply_text(f"🔗 Link gốc: `{url}`", parse_mode="Markdown")
+        await update.message.reply_text(f"🔗 `{url}`", parse_mode="Markdown")
         await update.message.reply_text(content, parse_mode="Markdown")
         await asyncio.sleep(0.5)
 
