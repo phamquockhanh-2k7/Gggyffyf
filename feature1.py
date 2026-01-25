@@ -9,14 +9,13 @@ from telegram import (
 from telegram.ext import (
     CommandHandler, MessageHandler, ContextTypes, filters
 )
+import config # Lấy cấu hình
 
 # Import từ feature3
 from feature3 import init_user_if_new, add_credit, delete_msg_job, get_credits, check_credits, cheat_credits
 
-# Firebase URL
-BASE_URL = "https://bot-telegram-99852-default-rtdb.firebaseio.com"
-FIREBASE_URL = f"{BASE_URL}/shared"
-CHANNEL_USERNAME = "@hoahocduong_vip"
+# Firebase URL từ config
+FIREBASE_URL = f"{config.FIREBASE_URL}/shared"
 
 def generate_alias(length=7):
     date_prefix = datetime.now().strftime("%d%m%Y")
@@ -28,26 +27,27 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
         user = update.effective_user
         if not user: return False
         
-        # Kiểm tra thành viên kênh
+        # Kiểm tra thành viên kênh (Lấy username từ config)
         try:
-            member = await context.bot.get_chat_member(CHANNEL_USERNAME, user.id)
+            member = await context.bot.get_chat_member(config.MAIN_CHANNEL_USERNAME, user.id)
             if member.status in ['member', 'administrator', 'creator']:
                 return True
         except:
-            pass # Nếu bot chưa vào kênh hoặc lỗi mạng -> Tạm tha (hoặc xử lý tùy ý)
+            pass 
 
         start_args = context.args
         confirm_link = f"https://t.me/{context.bot.username}?start={start_args[0]}" if start_args else f"https://t.me/{context.bot.username}?start=start"
 
+        # Lấy link join từ config
         keyboard = [
-            [InlineKeyboardButton("🔥 THAM GIA KÊNH NGAY", url=f"https://t.me/{CHANNEL_USERNAME[1:]}")],
-            [InlineKeyboardButton("🔓 THAM GIA KÊNH NÀY NỮA", url=f"https://t.me/+FLoRiJiPtUJhNjhl")],
+            [InlineKeyboardButton("🔥 THAM GIA KÊNH NGAY", url=f"https://t.me/{config.MAIN_CHANNEL_USERNAME[1:]}")],
+            [InlineKeyboardButton("🔓 THAM GIA KÊNH NÀY NỮA", url=config.JOIN_LINK_CHANNEL)],
             [InlineKeyboardButton("🔓 XÁC NHẬN ĐÃ THAM GIA", url=confirm_link)]
         ]
         if update.message:
             await update.message.reply_text(
                 "📛 BẠN PHẢI THAM GIA KÊNH TRƯỚC KHI SỬ DỤNG BOT!\n"
-                f"👉 Kênh yêu cầu: {CHANNEL_USERNAME}\n"
+                f"👉 Kênh yêu cầu: {config.MAIN_CHANNEL_USERNAME}\n"
                 "✅ Sau khi tham gia, nhấn nút XÁC NHẬN để tiếp tục",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
@@ -78,9 +78,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # --- XỬ LÝ REF ---
         if command.startswith("ref_"):
             referrer_id = command.split("_")[1]
+            # Lấy link quảng cáo từ config
             keyboard = [
-                [InlineKeyboardButton("LINK FREE CHO BẠN :V ", url="https://t.me/upbaiviet_bot?start=0401202641jO9Rl")],
-                [InlineKeyboardButton("Thêm Link này nữa 😘", url="https://t.me/upbaiviet_robot?start=BQADAQADyRQAAly12EaVCMPUmDCWMhYE")]
+                [InlineKeyboardButton("LINK FREE CHO BẠN :V ", url=config.REF_LINK_1)],
+                [InlineKeyboardButton("Thêm Link này nữa 😘", url=config.REF_LINK_2)]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
