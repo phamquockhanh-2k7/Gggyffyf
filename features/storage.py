@@ -135,7 +135,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 for m in msgs_to_delete:
                     context.job_queue.run_once(delete_msg_job, 86400, data=m.message_id, chat_id=update.effective_chat.id)
 
-                # --- AUTO API SHORTEN (ĐÃ SỬA: GỬI 2 LOẠI LINK) ---
+                # --- AUTO API SHORTEN (ĐÃ FIX: Copy link bằng HTML) ---
                 if context.user_data.get('current_mode') == 'API':
                     bot_username = context.bot.username
                     start_link_full = f"https://t.me/{bot_username}?start={alias}"
@@ -144,14 +144,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     from .shortener import generate_shortened_content
                     shortened_text = await generate_shortened_content(start_link_full)
                     
-                    # Gửi cả 2 dạng: Copy (có dấu `) và Click (không dấu `)
+                    # Gửi link dạng Copy (trong khung) và Click (bình thường)
                     msg_links = (
-                        f"🚀 **AUTO API:**\n\n"
-                        f"📋 **Copy:**\n`{start_link_full}`\n\n"
-                        f"🔗 **Click:**\n{start_link_full}"
+                        f"🚀 <b>AUTO API:</b>\n\n"
+                        f"📋 <b>Copy:</b>\n<code>{start_link_full}</code>\n\n"
+                        f"🔗 <b>Click:</b>\n{start_link_full}"
                     )
                     
-                    await update.message.reply_text(msg_links, parse_mode="Markdown")
+                    # Dùng HTML ở đây để thẻ <code> hoạt động (Tạo ô copy)
+                    await update.message.reply_text(msg_links, parse_mode="HTML")
+                    
+                    # Dùng Markdown ở đây để nội dung rút gọn hiện đậm/nghiêng đúng chuẩn
                     await update.message.reply_text(shortened_text, parse_mode="Markdown")
 
             else: 
@@ -218,6 +221,7 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def sigmaboy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not await check_channel_membership(update, context): return
+    # Lưu cài đặt bảo vệ vào user_data (riêng từng người dùng)
     args = context.args
     context.user_data['user_protection'] = args[0].lower() == "off" if args else True
     await update.message.reply_text("⚙️ Cấu hình bảo mật đã được cập nhật.")
