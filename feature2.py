@@ -50,8 +50,8 @@ async def generate_shortened_content(url):
         f"➖➖➖➖➖➖➖➖➖➖\n"
         f"**😘Nếu mua link hãy chọn linkx hoặc anonlink để mua giá rẻ hơn, nếu vượt link hãy dùng oklink, có thể mua nhưng sẽ đắt hơn! **\n\n"
         f"**Cách vượt Link: ** HuongDanVuotLink.vercel.app\n\n"
-        f"**Cách Mua link: ** HuongDanMuaLink.vercel.app \n\n**⫸Lưu lại link này để tránh lạc mất nhau: ``**LinkDuPhongSOS.vercel.app 🥰``"
-        f"**Copy link: ** `LinkDuPhongSOS.vercel.app` "
+        f"**Cách Mua link: ** HuongDanMuaLink.vercel.app \n\n**⫸Lưu lại link này để tránh lạc mất nhau: **LinkDuPhongSOS.vercel.app 🥰\n\n"
+        f"**👉Copy link: ** `LinkDuPhongSOS.vercel.app` "
     )
     return raw_content
 
