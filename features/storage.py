@@ -6,8 +6,12 @@ import string
 import asyncio
 import requests
 from datetime import datetime
-from telegram import Update, InputMediaPhoto, InputMediaVideo, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import CommandHandler, MessageHandler, ContextTypes, filters
+from telegram import (
+    Update, InputMediaPhoto, InputMediaVideo, InlineKeyboardButton, InlineKeyboardMarkup
+)
+from telegram.ext import (
+    CommandHandler, MessageHandler, ContextTypes, filters
+)
 import config 
 
 # Import Relative (dấu chấm)
@@ -32,7 +36,7 @@ async def check_channel_membership(update: Update, context: ContextTypes.DEFAULT
             if member.status in ['member', 'administrator', 'creator']:
                 return True
         except:
-            pass 
+            pass # Nếu bot chưa vào kênh hoặc lỗi mạng -> Tạm tha
 
         start_args = context.args
         confirm_link = f"https://t.me/{context.bot.username}?start={start_args[0]}" if start_args else f"https://t.me/{context.bot.username}?start=start"
@@ -135,27 +139,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 for m in msgs_to_delete:
                     context.job_queue.run_once(delete_msg_job, 86400, data=m.message_id, chat_id=update.effective_chat.id)
 
-                # --- AUTO API SHORTEN (ĐÃ FIX: Copy link bằng HTML) ---
+                # --- AUTO API SHORTEN ---
                 if context.user_data.get('current_mode') == 'API':
                     bot_username = context.bot.username
                     start_link_full = f"https://t.me/{bot_username}?start={alias}"
                     
-                    # Import động
+                    # Import động để tránh circular import
                     from .shortener import generate_shortened_content
                     shortened_text = await generate_shortened_content(start_link_full)
                     
-                    # Gửi link dạng Copy (trong khung) và Click (bình thường)
-                    msg_links = (
-                        f"🚀 <b>AUTO API:</b>\n\n"
-                        f"📋 <b>Copy:</b>\n<code>{start_link_full}</code>\n\n"
-                        f"🔗 <b>Click:</b>\n{start_link_full}"
-                    )
-                    
-                    # Dùng HTML ở đây để thẻ <code> hoạt động (Tạo ô copy)
-                    await update.message.reply_text(msg_links, parse_mode="HTML")
-                    
-                    # Dùng Markdown ở đây để nội dung rút gọn hiện đậm/nghiêng đúng chuẩn
-                    await update.message.reply_text(shortened_text, parse_mode="Markdown")
+                    await update.message.reply_text(f"🚀 **AUTO API:**\nLink gốc: {start_link_full}\n`{start_link_full}`", disable_web_page_preview=True)
+                    await update.message.reply_text(f"<pre>{shortened_text}</pre>", parse_mode="HTML")
 
             else: 
                 await update.message.reply_text("❌ Liên kết không tồn tại hoặc đã bị xóa.")
@@ -221,7 +215,6 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def sigmaboy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not await check_channel_membership(update, context): return
-    # Lưu cài đặt bảo vệ vào user_data (riêng từng người dùng)
     args = context.args
     context.user_data['user_protection'] = args[0].lower() == "off" if args else True
     await update.message.reply_text("⚙️ Cấu hình bảo mật đã được cập nhật.")
