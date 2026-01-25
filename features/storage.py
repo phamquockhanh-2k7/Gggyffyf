@@ -135,7 +135,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 for m in msgs_to_delete:
                     context.job_queue.run_once(delete_msg_job, 86400, data=m.message_id, chat_id=update.effective_chat.id)
 
-                # --- AUTO API SHORTEN (ĐÃ SỬA LẠI CHUẨN) ---
+                # --- AUTO API SHORTEN (ĐÃ SỬA: GỬI 2 LOẠI LINK) ---
                 if context.user_data.get('current_mode') == 'API':
                     bot_username = context.bot.username
                     start_link_full = f"https://t.me/{bot_username}?start={alias}"
@@ -144,8 +144,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     from .shortener import generate_shortened_content
                     shortened_text = await generate_shortened_content(start_link_full)
                     
-                    # Dùng Markdown và dấu ` để copy
-                    await update.message.reply_text(f"🚀 **AUTO API:**\nLink gốc: `{start_link_full}`", parse_mode="Markdown")
+                    # Gửi cả 2 dạng: Copy (có dấu `) và Click (không dấu `)
+                    msg_links = (
+                        f"🚀 **AUTO API:**\n\n"
+                        f"📋 **Copy:**\n`{start_link_full}`\n\n"
+                        f"🔗 **Click:**\n{start_link_full}"
+                    )
+                    
+                    await update.message.reply_text(msg_links, parse_mode="Markdown")
                     await update.message.reply_text(shortened_text, parse_mode="Markdown")
 
             else: 
