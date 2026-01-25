@@ -1,3 +1,6 @@
+# ==============================================================================
+# FEATURE1 : LƯU TRỮ LINK , CÁC LỆNH /start /newlink /done /sigmaboy /profile /cheattogetdownload
+# ==============================================================================
 import secrets
 import string
 import asyncio
