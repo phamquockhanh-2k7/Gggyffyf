@@ -4,11 +4,12 @@ import time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ChatJoinRequestHandler, CommandHandler, CallbackQueryHandler
 from telegram.error import Forbidden, BadRequest, RetryAfter, NetworkError
+import config # Lấy config
 
 # ==============================================================================
-# CẤU HÌNH
+# CẤU HÌNH TỪ CONFIG
 # ==============================================================================
-BASE_DB_URL = 'https://bot-telegram-99852-default-rtdb.firebaseio.com'
+BASE_DB_URL = config.FIREBASE_URL
 CHECKPOINT_DB = f"{BASE_DB_URL}/broadcast_checkpoint.json"
 
 # ==============================================================================
