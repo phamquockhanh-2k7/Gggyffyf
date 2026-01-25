@@ -32,15 +32,17 @@ async def generate_shortened_content(url):
         get_short_link(url, config.URL_API_ANON, config.API_KEY_ANON, config.ORIGIN_DOMAIN_ANON, config.DOMAIN_MASK_ANON)
     )
 
+    # Đã bỏ dấu ** (in đậm) vì khi đưa vào khung Code, in đậm không còn tác dụng
+    # Thay vào đó là văn bản thuần để copy cho dễ
     raw_content = (
-        f"**Link mua: (rẻ hơn )**\n {t2}\n"
-        f"**Link mua:**\n {t3}\n"
-        f"**Link vượt: **\n {t1}\n"
+        f"Link mua: (rẻ hơn )\n {t2}\n"
+        f"Link mua:\n {t3}\n"
+        f"Link vượt: \n {t1}\n"
         f"➖➖➖➖➖➖➖➖➖➖\n"
-        f"**😘Nếu mua link hãy chọn linkx hoặc anonlink để mua giá rẻ hơn, nếu vượt link hãy dùng oklink, có thể mua nhưng sẽ đắt hơn! **\n\n"
-        f"**Cách vượt Link: ** HuongDanVuotLink.vercel.app\n\n"
-        f"**Cách Mua link: ** HuongDanMuaLink.vercel.app \n\n**⫸Lưu lại link này để tránh lạc mất nhau: **LinkDuPhongSOS.vercel.app 🥰\n\n"
-        f"**👉Copy link: ** `LinkDuPhongSOS.vercel.app` "
+        f"😘Nếu mua link hãy chọn linkx hoặc anonlink để mua giá rẻ hơn, nếu vượt link hãy dùng oklink, có thể mua nhưng sẽ đắt hơn! \n\n"
+        f"Cách vượt Link:  HuongDanVuotLink.vercel.app\n\n"
+        f"Cách Mua link:  HuongDanMuaLink.vercel.app \n\n⫸Lưu lại link này để tránh lạc mất nhau: LinkDuPhongSOS.vercel.app 🥰\n\n"
+        f"👉Copy link:  LinkDuPhongSOS.vercel.app "
     )
     return raw_content
 
@@ -64,10 +66,18 @@ async def handle_api_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     for url in urls:
         content = await generate_shortened_content(url)
-        # --- ĐÃ SỬA: Xóa bỏ disable_web_page_preview để tránh lỗi ---
-        # Dùng Markdown và dấu huyền (`) để tạo ô copy
-        await update.message.reply_text(f"🔗 `{url}`", parse_mode="Markdown")
-        await update.message.reply_text(content, parse_mode="Markdown")
+        
+        # 1. Gửi Link gốc (Vẫn giữ 1 cái copy được, 1 cái click được cho tiện)
+        msg_links = (
+            f"🔗 <b>Link gốc:</b>\n"
+            f"<code>{url}</code>" 
+        )
+        await update.message.reply_text(msg_links, parse_mode="HTML")
+        
+        # 2. Gửi Caption (Dùng thẻ <pre> của HTML để tạo khối code lớn, bấm vào là copy cả cục)
+        # Thẻ <pre> giữ nguyên xuống dòng và định dạng
+        await update.message.reply_text(f"<pre>{content}</pre>", parse_mode="HTML")
+        
         await asyncio.sleep(0.5)
 
 def register_feature2(app):
