@@ -5,21 +5,7 @@ import asyncio
 from telegram import Update
 from telegram.ext import CommandHandler, MessageHandler, ContextTypes, filters
 from feature1 import check_channel_membership
-
-# ==============================================================================
-# ⚙️ CẤU HÌNH API
-# ==============================================================================
-API_KEY_1 = "5d2e33c19847dea76f4fdb49695fd81aa669af86"
-API_URL_1 = "https://vuotlink.vip/api" 
-DOMAIN_MASK_1 = "GoToLink.vercel.app" 
-
-API_KEY_2 = "4a06a2345a0e4ca098f9bf7b37a246439d5912e5"
-API_URL_2 = "https://linkx.me/api"
-DOMAIN_MASK_2 = "BuyThisLink.vercel.app" 
-
-API_KEY_3 = "b0bb16d8f14caaf4bfb6f8a0cceac1a8ee5e9668"
-API_URL_3 = "https://anonlink.io/api"
-DOMAIN_MASK_3 = "MuaLinkNay.vercel.app" 
+import config # Lấy cấu hình từ config.py
 
 URL_PATTERN = r'(https?://\S+|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\S*)'
 
@@ -32,15 +18,17 @@ async def get_short_link(long_url, api_url, api_key, original_domain, mask_domai
             async with session.get(req_url, timeout=10) as resp:
                 if resp.status == 200:
                     short_link = (await resp.text()).strip()
+                    # Thay domain gốc bằng domain ảo (Mask)
                     return short_link.replace(original_domain, mask_domain)
                 return "Lỗi API"
     except: return "Lỗi Mạng"
 
 async def generate_shortened_content(url):
+    # Lấy key và domain từ config
     t1, t2, t3 = await asyncio.gather(
-        get_short_link(url, API_URL_1, API_KEY_1, "vuotlink.vip", DOMAIN_MASK_1),
-        get_short_link(url, API_URL_2, API_KEY_2, "linkx.me", DOMAIN_MASK_2),
-        get_short_link(url, API_URL_3, API_KEY_3, "anonlink.io", DOMAIN_MASK_3)
+        get_short_link(url, config.URL_API_VUOTLINK, config.API_KEY_VUOTLINK, config.ORIGIN_DOMAIN_VUOTLINK, config.DOMAIN_MASK_VUOTLINK),
+        get_short_link(url, config.URL_API_LINKX, config.API_KEY_LINKX, config.ORIGIN_DOMAIN_LINKX, config.DOMAIN_MASK_LINKX),
+        get_short_link(url, config.URL_API_ANON, config.API_KEY_ANON, config.ORIGIN_DOMAIN_ANON, config.DOMAIN_MASK_ANON)
     )
 
     raw_content = (
