@@ -1,3 +1,6 @@
+# ================================================================================================
+# FEATURE6: POSTER BOT ĐĂNG BÀI SỐ LƯỢNG LỚN EVERY DAY , CÁC LỆNH : /KHO , /XONG , /CHECK / SENDALL
+# ================================================================================================
 import asyncio
 import requests
 import datetime
