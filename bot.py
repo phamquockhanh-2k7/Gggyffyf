@@ -5,12 +5,13 @@ from telegram.ext import ApplicationBuilder
 from keep_alive import keep_alive
 import config  # Import file config
 
-# --- SỬA IMPORT ĐỂ TRỎ VÀO THƯ MỤC FEATURES ---
+# --- IMPORT CÁC TÍNH NĂNG ---
 from features.storage import register_feature1
 from features.shortener import register_feature2
 from features.credits import register_feature3
 from features.sos_tracker import register_feature4
 from features.broadcast import register_feature5 
+from features.autopost import register_feature6  # <--- Feature Auto Post
 
 # ==============================================================================
 # ⚙️ HÀM KHỞI TẠO VÀ CHẠY HỆ THỐNG
@@ -23,7 +24,6 @@ async def run_multiple_bots():
     # HÀM CÀI ĐẶT 1 CON BOT
     # ---------------------------------------------------------
     async def setup_one_bot(token, name, bot_type="SOS"):
-        # Bỏ qua nếu token trống hoặc chưa điền
         if not token or "TOKEN" in token: 
             return
 
@@ -33,19 +33,23 @@ async def run_multiple_bots():
             
             # --- PHÂN LOẠI TÍNH NĂNG ---
             if bot_type == "MAIN":
-                # ✅ Bot chính: Nạp FULL tính năng
+                # ✅ Bot chính: Chạy các tính năng user dùng
                 register_feature1(app) 
                 register_feature2(app)
                 register_feature3(app)
                 register_feature4(app)
                 register_feature5(app) 
                 
+            elif bot_type == "POSTER":
+                # ✅ Bot Poster: CHỈ CHẠY AUTO POST
+                register_feature6(app)
+
             elif bot_type == "BROADCAST":
-                # Bot Broadcast: Chỉ chạy tính năng 5
+                # Bot Broadcast: Chỉ chạy tính năng gửi tin
                 register_feature5(app) 
                 
             else: 
-                # Bot SOS: Chỉ chạy tính năng 4
+                # Bot SOS: Chỉ chạy tính năng quét ID
                 register_feature4(app) 
             
             # Khởi động
@@ -60,18 +64,22 @@ async def run_multiple_bots():
             print(f"❌ Lỗi cài đặt {name}: {e}")
 
     # ---------------------------------------------------------
-    # VÒNG LẶP KHỞI ĐỘNG (DÙNG LIST TỪ CONFIG)
+    # VÒNG LẶP KHỞI ĐỘNG
     # ---------------------------------------------------------
     
     # 1. Chạy dàn MAIN
     for i, token in enumerate(config.MAIN_BOT_TOKENS):
         await setup_one_bot(token, f"👑 MAIN BOT {i+1}", bot_type="MAIN")
 
-    # 2. Chạy dàn BROADCAST
+    # 2. Chạy POSTER BOT (Riêng biệt)
+    if config.POSTER_BOT_TOKEN:
+        await setup_one_bot(config.POSTER_BOT_TOKEN, "📮 POSTER BOT", bot_type="POSTER")
+
+    # 3. Chạy dàn BROADCAST
     for i, token in enumerate(config.BROADCAST_BOT_TOKENS):
         await setup_one_bot(token, f"📢 BROADCAST BOT {i+1}", bot_type="BROADCAST")
 
-    # 3. Chạy dàn SOS
+    # 4. Chạy dàn SOS
     for i, token in enumerate(config.SOS_BOT_TOKENS):
         await setup_one_bot(token, f"🚑 SOS BOT {i+1}", bot_type="SOS")
 
