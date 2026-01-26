@@ -47,6 +47,7 @@ async def run_multiple_bots():
             elif bot_type == "BROADCAST":
                 # Bot Broadcast: Chỉ chạy tính năng gửi tin
                 register_feature5(app) 
+                register_feature6(app)
                 
             else: 
                 # Bot SOS: Chỉ chạy tính năng quét ID
