@@ -40,3 +40,7 @@ API_KEY_ANON = os.getenv("API_KEY_ANON")
 DOMAIN_MASK_ANON = os.getenv("DOMAIN_MASK_ANON")
 URL_API_ANON = "https://anonlink.io/api"
 ORIGIN_DOMAIN_ANON = "anonlink.io"
+
+
+# 5. BOT POSTER <===
+POSTER_BOT_TOKEN = os.getenv("POSTER_BOT_TOKEN", "")
