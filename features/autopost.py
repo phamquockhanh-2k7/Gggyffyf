@@ -14,7 +14,7 @@ import config
 # Database URL
 DB_URL = f"{config.FIREBASE_URL}/autopost_storage"
 SETTINGS_URL = f"{config.FIREBASE_URL}/autopost_settings"
-USER_DB_URL = f"{config.FIREBASE_URL}/autopost_users" # DB lưu người dùng kích hoạt
+USER_DB_URL = f"{config.FIREBASE_URL}/autopost_users" 
 
 # Khởi tạo Scheduler (Lên lịch) - Múi giờ Việt Nam
 TIMEZONE = pytz.timezone('Asia/Ho_Chi_Minh')
@@ -27,7 +27,6 @@ ACTIVE_USERS_CACHE = set()
 # 0. HỆ THỐNG BẢO MẬT (CÔNG TẮC)
 # ==============================================================================
 async def load_active_users():
-    """Tải danh sách người dùng đã kích hoạt khi bot khởi động"""
     global ACTIVE_USERS_CACHE
     try:
         res = await asyncio.to_thread(requests.get, f"{USER_DB_URL}.json")
@@ -38,16 +37,12 @@ async def load_active_users():
     except: pass
 
 async def check_active(user_id):
-    """Kiểm tra xem user có đang bật bot không"""
     return str(user_id) in ACTIVE_USERS_CACHE
 
 async def command_activenow(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Bật bot"""
     uid = str(update.effective_user.id)
     if uid in ACTIVE_USERS_CACHE:
         return await update.message.reply_text("✅ Bot đã được BẬT từ trước rồi.")
-    
-    # Lưu vào DB và Cache
     try:
         await asyncio.to_thread(requests.put, f"{USER_DB_URL}/{uid}.json", json=True)
         ACTIVE_USERS_CACHE.add(uid)
@@ -55,12 +50,8 @@ async def command_activenow(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except: await update.message.reply_text("❌ Lỗi mạng.")
 
 async def command_turnoff(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Tắt bot"""
     uid = str(update.effective_user.id)
-    if uid not in ACTIVE_USERS_CACHE:
-        return # Đã tắt rồi thì không nói gì cả
-    
-    # Xóa khỏi DB và Cache
+    if uid not in ACTIVE_USERS_CACHE: return 
     try:
         await asyncio.to_thread(requests.delete, f"{USER_DB_URL}/{uid}.json")
         ACTIVE_USERS_CACHE.discard(uid)
@@ -103,9 +94,8 @@ def reschedule_job(app, hour, minute):
 # ==============================================================================
 # 2. QUẢN LÝ KÊNH
 # ==============================================================================
-
 async def handle_add_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await check_active(update.effective_user.id): return # 🔒 CHECK
+    if not await check_active(update.effective_user.id): return 
 
     msg = update.effective_message
     if not msg.forward_from_chat: return
@@ -123,7 +113,7 @@ async def handle_add_channel(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await msg.reply_text(f"✅ Đã thêm: **{chat_title}**\nID: `{chat_id}`", parse_mode="Markdown")
 
 async def menu_kho(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await check_active(update.effective_user.id): return # 🔒 CHECK
+    if not await check_active(update.effective_user.id): return 
 
     storage = await get_storage()
     if not storage:
@@ -142,7 +132,7 @@ async def menu_kho(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # 3. XỬ LÝ NÚT BẤM
 # ==============================================================================
 async def handle_kho_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await check_active(update.effective_user.id): return # 🔒 CHECK
+    if not await check_active(update.effective_user.id): return 
 
     query = update.callback_query
     await query.answer()
@@ -160,12 +150,16 @@ async def handle_kho_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         c_data = storage[cid]
         files = c_data.get('files', []) or []
-        remains = len(files) - c_data.get('current_index', 0)
+        total = len(files)
+        curr = c_data.get('current_index', 0)
+        remains = total - curr
         
+        # Format chi tiết trong Menu
         status = (
             f"📺 **{c_data.get('name')}**\n"
             f"🆔 `{cid}`\n"
-            f"📦 Tổng: {len(files)} | Còn: **{remains}**\n"
+            f"📊 Tiến độ: **{curr}/{total}**\n"
+            f"📦 Còn lại: **{remains}**\n"
             f"🚀 Limit: {c_data.get('limit', 25)}/ngày"
         )
         
@@ -182,7 +176,6 @@ async def handle_kho_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.message.delete()
         await menu_kho(query.message, context)
 
-    # Nút Xóa Kênh
     elif data.startswith("KHO_DEL_ASK_"):
         cid = data.split("_")[-1]
         kb = [[InlineKeyboardButton("✅ Xóa luôn", callback_data=f"KHO_DEL_CONFIRM_{cid}")],
@@ -215,12 +208,12 @@ async def handle_kho_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 # 4. INPUT & LỆNH KHÁC
 # ==============================================================================
 async def command_setschedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await check_active(update.effective_user.id): return # 🔒 CHECK
+    if not await check_active(update.effective_user.id): return
     context.user_data['autopost_mode'] = {'action': 'set_hour'}
     await update.message.reply_text("🕒 Nhập **GIỜ** (0-23):")
 
 async def handle_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await check_active(update.effective_user.id): return # 🔒 CHECK
+    if not await check_active(update.effective_user.id): return
 
     mode = context.user_data.get('autopost_mode')
     if not mode: 
@@ -228,7 +221,6 @@ async def handle_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     msg = update.message
-    # Logic Set Giờ
     if mode['action'] == 'set_hour':
         try:
             h = int(msg.text)
@@ -266,7 +258,7 @@ async def handle_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except: pass
 
 async def command_xong(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await check_active(update.effective_user.id): return # 🔒 CHECK
+    if not await check_active(update.effective_user.id): return 
     mode = context.user_data.get('autopost_mode')
     if not mode or mode['action'] != 'adding': return
     
@@ -285,24 +277,35 @@ async def command_xong(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except: pass
     context.user_data['autopost_mode'] = None
 
+# ==============================================================================
+# 5. BÁO CÁO (Đã chỉnh sửa hiển thị)
+# ==============================================================================
 async def check_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await check_active(update.effective_user.id): return # 🔒 CHECK
+    if not await check_active(update.effective_user.id): return
     storage = await get_storage()
     if not storage: return await update.message.reply_text("📭 Trống.")
     h, m = await get_schedule_time()
+    
     msg = f"⏰ **Lịch:** {h:02d}:{m:02d}\n\n"
     for cid, data in storage.items():
-        remains = len(data.get('files',[]) or []) - data.get('current_index',0)
-        msg += f"{'✅' if remains>50 else '⚠️'} **{data.get('name')}**: Còn {remains}\n"
+        files = data.get('files', []) or []
+        total = len(files)
+        curr = data.get('current_index', 0)
+        remains = total - curr
+        
+        # --- LOGIC MỚI THEO YÊU CẦU ---
+        icon = "✅" if remains > 100 else "⚠️"
+        msg += f"{icon} **{data.get('name')}**: {curr}/{total} (Còn {remains})\n"
+        
     await update.message.reply_text(msg, parse_mode="Markdown")
 
 async def send_all_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await check_active(update.effective_user.id): return # 🔒 CHECK
+    if not await check_active(update.effective_user.id): return
     await update.message.reply_text("🚀 Đang chạy thủ công...")
     await posting_logic(context.application)
     await check_status(update, context)
 
-# Logic chạy ngầm (Không cần check active vì tự chạy)
+# Logic chạy ngầm
 async def posting_logic(app):
     print("⏰ Auto Post Running...")
     storage = await get_storage()
@@ -334,16 +337,14 @@ async def posting_logic(app):
         await update_channel_data(cid, {"current_index": curr + count})
 
 async def init_scheduler_from_db(context: ContextTypes.DEFAULT_TYPE):
-    await load_active_users() # Load danh sách active users luôn
+    await load_active_users() 
     h, m = await get_schedule_time()
     reschedule_job(context.application, h, m)
 
 def register_feature6(app):
-    # Lệnh Kích hoạt / Tắt
     app.add_handler(CommandHandler("activenow", command_activenow))
     app.add_handler(CommandHandler("turnoff", command_turnoff))
 
-    # Lệnh Admin
     app.add_handler(CommandHandler("kho", menu_kho))
     app.add_handler(CommandHandler("xong", command_xong))
     app.add_handler(CommandHandler("check", check_status))
