@@ -6,18 +6,21 @@ import requests
 import datetime
 import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, InputMediaVideo
 from telegram.ext import CommandHandler, MessageHandler, ContextTypes, CallbackQueryHandler, filters
 import config
 
 # Database URL
 DB_URL = f"{config.FIREBASE_URL}/autopost_storage"
+SETTINGS_URL = f"{config.FIREBASE_URL}/autopost_settings"
 
 # Khởi tạo Scheduler (Lên lịch) - Múi giờ Việt Nam
-scheduler = AsyncIOScheduler(timezone=pytz.timezone('Asia/Ho_Chi_Minh'))
+TIMEZONE = pytz.timezone('Asia/Ho_Chi_Minh')
+scheduler = AsyncIOScheduler(timezone=TIMEZONE)
 
 # ==============================================================================
-# 1. CÁC HÀM XỬ LÝ DATABASE
+# 1. CÁC HÀM XỬ LÝ DATABASE & SCHEDULE
 # ==============================================================================
 async def get_storage():
     try:
@@ -27,6 +30,37 @@ async def get_storage():
 
 async def update_channel_data(chat_id, data):
     await asyncio.to_thread(requests.patch, f"{DB_URL}/{chat_id}.json", json=data)
+
+async def get_schedule_time():
+    """Lấy giờ đăng từ Firebase, mặc định là 00:00"""
+    try:
+        res = await asyncio.to_thread(requests.get, f"{SETTINGS_URL}/schedule.json")
+        data = res.json()
+        if data and 'hour' in data and 'minute' in data:
+            return int(data['hour']), int(data['minute'])
+        return 0, 0 # Mặc định 0h sáng
+    except: return 0, 0
+
+async def save_schedule_time(hour, minute):
+    """Lưu giờ đăng vào Firebase"""
+    await asyncio.to_thread(requests.put, f"{SETTINGS_URL}/schedule.json", json={"hour": hour, "minute": minute})
+
+def reschedule_job(app, hour, minute):
+    """Hàm cập nhật lại lịch chạy mà không cần restart bot"""
+    job_id = "daily_autopost"
+    
+    # Xóa job cũ nếu có
+    if scheduler.get_job(job_id):
+        scheduler.remove_job(job_id)
+    
+    # Thêm job mới
+    scheduler.add_job(
+        posting_logic, 
+        trigger=CronTrigger(hour=hour, minute=minute, timezone=TIMEZONE), 
+        id=job_id, 
+        args=[app]
+    )
+    print(f"⏰ Đã cập nhật lịch đăng bài: {hour:02d}:{minute:02d} hàng ngày.")
 
 # ==============================================================================
 # 2. QUẢN LÝ KÊNH (THÊM/MENU)
@@ -45,12 +79,11 @@ async def handle_add_channel(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if chat_id in current_db:
         await msg.reply_text(f"⚠️ Kênh **{chat_title}** đã có trong hệ thống rồi.")
     else:
-        # Khởi tạo dữ liệu kênh mới
         new_data = {
             "name": chat_title,
-            "limit": 25,       # Mặc định đăng 25 bài/ngày
-            "current_index": 0,# Vị trí bắt đầu
-            "files": []        # Kho chứa
+            "limit": 25,       
+            "current_index": 0,
+            "files": []        
         }
         await update_channel_data(chat_id, new_data)
         await msg.reply_text(f"✅ Đã thêm kho: **{chat_title}**\nID: `{chat_id}`", parse_mode="Markdown")
@@ -62,7 +95,6 @@ async def menu_kho(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     keyboard = []
-    # Tạo nút cho từng kênh
     for cid, data in storage.items():
         name = data.get('name', cid)
         keyboard.append([InlineKeyboardButton(f"📂 {name}", callback_data=f"KHO_SELECT_{cid}")])
@@ -83,7 +115,6 @@ async def handle_kho_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         context.user_data['autopost_mode'] = None
         return
 
-    # --- CHỌN KÊNH ---
     if data.startswith("KHO_SELECT_"):
         cid = data.split("_")[-1]
         storage = await get_storage()
@@ -118,7 +149,6 @@ async def handle_kho_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.message.delete()
         await menu_kho(query.message, context)
 
-    # --- CÁC CHỨC NĂNG CON ---
     elif data.startswith("KHO_ADD_"):
         cid = data.split("_")[-1]
         context.user_data['autopost_mode'] = {'action': 'adding', 'channel_id': cid, 'buffer': []}
@@ -128,7 +158,6 @@ async def handle_kho_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         cid = data.split("_")[-1]
         await update_channel_data(cid, {"current_index": 0})
         await query.answer("✅ Đã Reset về 0!", show_alert=True)
-        # Quay về menu chính
         await menu_kho(query.message, context)
 
     elif data.startswith("KHO_LIMIT_"):
@@ -137,29 +166,67 @@ async def handle_kho_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.edit_message_text(f"⚙️ **Cài đặt số lượng đăng mỗi ngày**\n\nNhập số lượng mới (Ví dụ: 25):")
 
 # ==============================================================================
-# 4. XỬ LÝ TIN NHẮN (NẠP FILE & NHẬP SỐ)
+# 4. CÀI ĐẶT LỊCH TRÌNH (/SETSCHEDULE)
+# ==============================================================================
+async def command_setschedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Bắt đầu quy trình cài đặt giờ"""
+    context.user_data['autopost_mode'] = {'action': 'set_hour'}
+    await update.message.reply_text("🕒 **CÀI ĐẶT GIỜ ĐĂNG BÀI**\n\nVui lòng nhập **GIỜ** (0 - 23):", parse_mode="Markdown")
+
+# ==============================================================================
+# 5. XỬ LÝ TIN NHẮN (LOGIC CHÍNH CỦA INPUT)
 # ==============================================================================
 async def handle_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mode = context.user_data.get('autopost_mode')
+    
+    # Nếu không có mode, check forward kênh
     if not mode: 
-        # Nếu không ở chế độ nạp, check xem có phải forward thêm kênh không
         if update.message.forward_from_chat:
             await handle_add_channel(update, context)
         return
 
     msg = update.message
-    cid = mode['channel_id']
+    
+    # --- LOGIC CÀI ĐẶT GIỜ (/setschedule) ---
+    if mode['action'] == 'set_hour':
+        try:
+            h = int(msg.text)
+            if 0 <= h <= 23:
+                mode['hour'] = h
+                mode['action'] = 'set_minute' # Chuyển sang bước nhập phút
+                await msg.reply_text(f"✅ Giờ: {h}\n\nTiếp tục nhập **PHÚT** (0 - 59):")
+            else:
+                await msg.reply_text("❌ Giờ phải từ 0 đến 23. Nhập lại:")
+        except: await msg.reply_text("❌ Vui lòng nhập số.")
+        return
 
-    # --- XỬ LÝ NẠP FILE ---
+    elif mode['action'] == 'set_minute':
+        try:
+            m = int(msg.text)
+            if 0 <= m <= 59:
+                h = mode['hour']
+                # 1. Lưu vào Database
+                await save_schedule_time(h, m)
+                # 2. Cập nhật Scheduler ngay lập tức
+                reschedule_job(context.application, h, m)
+                
+                await msg.reply_text(f"✅ **ĐÃ LƯU!**\nBot sẽ tự động đăng bài vào lúc **{h:02d}:{m:02d}** hàng ngày.", parse_mode="Markdown")
+                context.user_data['autopost_mode'] = None
+            else:
+                await msg.reply_text("❌ Phút phải từ 0 đến 59. Nhập lại:")
+        except: await msg.reply_text("❌ Vui lòng nhập số.")
+        return
+
+    # --- LOGIC NẠP FILE & LIMIT ---
+    cid = mode.get('channel_id')
+    
     if mode['action'] == 'adding':
         entry = None
         if msg.photo: entry = {"id": msg.photo[-1].file_id, "type": "photo"}
         elif msg.video: entry = {"id": msg.video.file_id, "type": "video"}
-        
         if entry:
             mode['buffer'].append(entry)
     
-    # --- XỬ LÝ SET LIMIT ---
     elif mode['action'] == 'setting_limit':
         try:
             val = int(msg.text)
@@ -181,44 +248,40 @@ async def command_xong(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await update.message.reply_text("❌ Chưa gửi file nào. Đã hủy.")
 
     await update.message.reply_text(f"⏳ Đang lưu {len(new_files)} file vào Database...")
-    
-    # Lấy data cũ rồi append
     try:
         current_data = (await asyncio.to_thread(requests.get, f"{DB_URL}/{cid}.json")).json()
         current_files = current_data.get('files', []) or []
-        
-        # Thêm mới vào
         updated_files = current_files + new_files
-        
         await update_channel_data(cid, {"files": updated_files})
         await update.message.reply_text(f"✅ **NẠP THÀNH CÔNG!**\nTổng kho hiện tại: {len(updated_files)}", parse_mode="Markdown")
     except Exception as e:
         await update.message.reply_text(f"❌ Lỗi: {e}")
-    
     context.user_data['autopost_mode'] = None
 
 # ==============================================================================
-# 5. LOGIC ĐĂNG BÀI (CORE) & BÁO CÁO
+# 6. LOGIC ĐĂNG BÀI (CORE) & BÁO CÁO
 # ==============================================================================
 
 async def check_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     storage = await get_storage()
     if not storage: return await update.message.reply_text("📭 Không có dữ liệu.")
     
-    msg = "📊 **TÌNH TRẠNG KHO:**\n\n"
+    # Lấy giờ lịch trình hiện tại để báo cáo
+    h, m = await get_schedule_time()
+    
+    msg = f"⏰ **LỊCH TRÌNH:** {h:02d}:{m:02d} hàng ngày.\n\n📊 **TÌNH TRẠNG KHO:**\n\n"
     for cid, data in storage.items():
         name = data.get('name', cid)
         total = len(data.get('files', []) or [])
         curr = data.get('current_index', 0)
         remains = total - curr
-        
         icon = "✅" if remains > 50 else "⚠️"
         msg += f"{icon} **{name}:** {curr}/{total} (Còn {remains})\n"
         
     await update.message.reply_text(msg, parse_mode="Markdown")
 
 async def posting_logic(app):
-    """Hàm chạy ngầm để đăng bài lúc 0h"""
+    """Hàm chạy ngầm để đăng bài"""
     print("⏰ Đang chạy Auto Post...")
     storage = await get_storage()
     if not storage: return
@@ -229,37 +292,28 @@ async def posting_logic(app):
         limit = data.get('limit', 25)
         name = data.get('name', cid)
         
-        # Kiểm tra xem còn hàng không
         if curr >= len(files):
             print(f"❌ {name}: HẾT HÀNG!")
             continue
             
-        # Lấy danh sách cần đăng hôm nay
         end_index = min(curr + limit, len(files))
         batch = files[curr : end_index]
-        
-        # Chia thành các Album nhỏ (Telegram giới hạn 10 item/album)
         chunks = [batch[i:i + 10] for i in range(0, len(batch), 10)]
         
         success_count = 0
-        
         for chunk in chunks:
             media_group = []
             for item in chunk:
-                if item['type'] == 'photo':
-                    media_group.append(InputMediaPhoto(item['id']))
-                elif item['type'] == 'video':
-                    media_group.append(InputMediaVideo(item['id']))
-            
+                if item['type'] == 'photo': media_group.append(InputMediaPhoto(item['id']))
+                elif item['type'] == 'video': media_group.append(InputMediaVideo(item['id']))
             try:
                 if media_group:
                     await app.bot.send_media_group(chat_id=cid, media=media_group)
                     success_count += len(chunk)
-                    await asyncio.sleep(5) # Nghỉ 5s giữa các album
+                    await asyncio.sleep(5)
             except Exception as e:
                 print(f"Lỗi đăng kênh {name}: {e}")
         
-        # Cập nhật Index mới
         new_index = curr + success_count
         await update_channel_data(cid, {"current_index": new_index})
         print(f"✅ {name}: Đã đăng {success_count} bài.")
@@ -271,8 +325,14 @@ async def send_all_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await check_status(update, context) 
 
 # ==============================================================================
-# 6. SCHEDULER & REGISTER
+# 7. KHỞI TẠO & ĐĂNG KÝ
 # ==============================================================================
+
+async def init_scheduler_from_db(context: ContextTypes.DEFAULT_TYPE):
+    """Chạy 1 lần khi bot khởi động để lấy giờ từ DB"""
+    h, m = await get_schedule_time()
+    reschedule_job(context.application, h, m)
+    print(f"♻️ Đã khôi phục lịch trình: {h:02d}:{m:02d}")
 
 def register_feature6(app):
     # Lệnh Admin
@@ -280,12 +340,15 @@ def register_feature6(app):
     app.add_handler(CommandHandler("xong", command_xong))
     app.add_handler(CommandHandler("check", check_status))
     app.add_handler(CommandHandler("sendall", send_all_command))
+    app.add_handler(CommandHandler("setschedule", command_setschedule)) # <--- Lệnh mới
     
     # Handler
     app.add_handler(CallbackQueryHandler(handle_kho_callback, pattern="^KHO_"))
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_input), group=3)
     
-    # Khởi động Scheduler (00:00 mỗi ngày)
-    scheduler.add_job(posting_logic, 'cron', hour=0, minute=0, args=[app])
+    # Khởi động Scheduler
     if not scheduler.running:
         scheduler.start()
+        
+    # Đặt một tác vụ chạy sau 1 giây để load giờ từ DB
+    app.job_queue.run_once(init_scheduler_from_db, 1)
