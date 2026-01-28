@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 
-# Load file .env nếu chạy local (trên Koyeb nó tự nhận biến hệ thống)
+# Load file .env nếu chạy local
 load_dotenv()
 
 def get_list(key):
@@ -23,10 +23,10 @@ REF_LINK_1 = os.getenv("REF_LINK_1", "")
 REF_LINK_2 = os.getenv("REF_LINK_2", "")
 
 # 4. API RÚT GỌN
-# VuotLink.
+# VuotLink
 API_KEY_VUOTLINK = os.getenv("API_KEY_VUOTLINK")
 DOMAIN_MASK_VUOTLINK = os.getenv("DOMAIN_MASK_VUOTLINK")
-URL_API_VUOTLINK = "https://vuotlink.vip/api" # URL gốc của API (ít thay đổi nên để đây cũng được)
+URL_API_VUOTLINK = "https://vuotlink.vip/api"
 ORIGIN_DOMAIN_VUOTLINK = "vuotlink.vip"
 
 # LinkX
@@ -41,6 +41,6 @@ DOMAIN_MASK_ANON = os.getenv("DOMAIN_MASK_ANON")
 URL_API_ANON = "https://anonlink.io/api"
 ORIGIN_DOMAIN_ANON = "anonlink.io"
 
-
-# 5. BOT POSTER <===
+# 5. BOT POSTER & BYPASS COOKIE <===
 POSTER_BOT_TOKEN = os.getenv("POSTER_BOT_TOKEN", "")
+VUOTLINK_PRO_COOKIE = os.getenv("VUOTLINK_PRO_COOKIE", "") # <--- QUAN TRỌNG
