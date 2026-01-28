@@ -1,23 +1,88 @@
 import requests
 import asyncio
 import re
+import json
 from telegram import Update
 from telegram.ext import CommandHandler, MessageHandler, ContextTypes, filters
 import config
 
-# Danh sách người dùng đang BẬT chế độ Bypass
+# --- CẤU HÌNH ---
+# ID của ADMIN (Chỉ fen mới được đổi cookie). 
+# Fen thay số ID của fen vào đây, hoặc lấy từ config nếu có.
+ADMIN_IDS = [123456789, 987654321]  # <--- THAY ID CỦA FEN VÀO ĐÂY
+
+# Biến lưu trữ Cookie trong RAM (để đỡ phải gọi Firebase liên tục)
+CURRENT_COOKIE = config.VUOTLINK_PRO_COOKIE 
 BYPASS_USERS = set()
 
-async def command_bat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# --- HÀM HỖ TRỢ FIREBASE ---
+def save_cookie_to_firebase(cookie_value):
+    """Lưu cookie lên Firebase để bot khởi động lại không bị mất"""
+    if not config.FIREBASE_URL: return
+    try:
+        url = f"{config.FIREBASE_URL}/settings/vuotlink_cookie.json"
+        requests.put(url, json=cookie_value)
+    except Exception as e:
+        print(f"Lỗi lưu Firebase: {e}")
+
+def get_cookie_from_firebase():
+    """Lấy cookie từ Firebase khi khởi động"""
+    if not config.FIREBASE_URL: return None
+    try:
+        url = f"{config.FIREBASE_URL}/settings/vuotlink_cookie.json"
+        res = requests.get(url)
+        if res.status_code == 200 and res.json():
+            return res.json()
+    except Exception as e:
+        print(f"Lỗi đọc Firebase: {e}")
+    return None
+
+# --- KHỞI ĐỘNG: Cập nhật Cookie từ Database ---
+saved_cookie = get_cookie_from_firebase()
+if saved_cookie:
+    CURRENT_COOKIE = saved_cookie
+    print("✅ Đã load Cookie từ Firebase!")
+else:
+    print("⚠️ Dùng Cookie mặc định từ Env.")
+
+# --- CÁC LỆNH ---
+
+async def command_setcookie(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lệnh thay đổi Cookie nóng: /setcookie <cookie_mới>"""
     user_id = update.effective_user.id
-    BYPASS_USERS.add(user_id)
-    await update.message.reply_text("🟢 **ĐÃ BẬT BYPASS PRO!**\nGửi link vào đây, tôi sẽ giả lập Chrome để xử lý.", parse_mode="Markdown")
+    
+    # 1. Bảo mật: Chỉ Admin mới được đổi
+    # Nếu fen chưa biết ID, hãy bảo bot print(user_id) ra để xem
+    # Hoặc tạm thời bỏ qua check nếu fen dùng bot 1 mình
+    # if user_id not in ADMIN_IDS:
+    #     await update.message.reply_text("⛔ Bạn không có quyền đổi Cookie!")
+    #     return
+
+    # 2. Lấy nội dung cookie
+    try:
+        # Lấy toàn bộ nội dung sau chữ /setcookie
+        new_cookie = update.message.text.split(maxsplit=1)[1].strip()
+    except IndexError:
+        await update.message.reply_text("⚠️ Cách dùng: `/setcookie lang=vi_VN;...`", parse_mode="Markdown")
+        return
+
+    # 3. Cập nhật
+    global CURRENT_COOKIE
+    CURRENT_COOKIE = new_cookie # Cập nhật vào RAM
+    
+    # Chạy thread riêng để lưu vào Firebase (tránh lag bot)
+    await asyncio.to_thread(save_cookie_to_firebase, new_cookie)
+    
+    await update.message.reply_text("✅ **ĐÃ CẬP NHẬT COOKIE MỚI!**\nBot đã sẵn sàng bypass mà không cần restart.", parse_mode="Markdown")
+
+async def command_bat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    BYPASS_USERS.add(update.effective_user.id)
+    await update.message.reply_text("🟢 **ĐÃ BẬT BYPASS!**")
 
 async def command_tat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id in BYPASS_USERS:
-        BYPASS_USERS.remove(user_id)
-    await update.message.reply_text("🔴 **ĐÃ TẮT BYPASS!**", parse_mode="Markdown")
+    if update.effective_user.id in BYPASS_USERS:
+        BYPASS_USERS.remove(update.effective_user.id)
+    await update.message.reply_text("🔴 **ĐÃ TẮT BYPASS!**")
 
 async def bypass_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -26,75 +91,41 @@ async def bypass_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id not in BYPASS_USERS: return
     if "vuotlink.vip" not in msg_text: return
 
-    status_msg = await update.message.reply_text("🕵️‍♂️ Đang giả lập Chrome VIP để vào link...")
+    status_msg = await update.message.reply_text("🕵️‍♂️ Đang soi link với Cookie mới nhất...")
 
-    # --- 🛠 CẤU HÌNH GIẢ LẬP TRÌNH DUYỆT (QUAN TRỌNG) ---
-    # Phải giống hệt cái trình duyệt fen lấy Cookie
+    # Cấu hình Request
     headers = {
-        'Authority': 'vuotlink.vip',
-        'Method': 'GET',
-        'Scheme': 'https',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Cache-Control': 'max-age=0',
-        'Cookie': config.VUOTLINK_PRO_COOKIE,  # <--- Cookie VIP
-        'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-        'Sec-Ch-Ua-Mobile': '?0',
-        'Sec-Ch-Ua-Platform': '"Windows"',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-User': '?1',
-        'Upgrade-Insecure-Requests': '1',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Cookie': CURRENT_COOKIE, # <--- Dùng biến toàn cục đã cập nhật
+        'Referer': 'https://vuotlink.vip/'
     }
 
     try:
-        # allow_redirects=True: Để nó tự nhảy qua các bước trung gian nếu có
         response = await asyncio.to_thread(requests.get, msg_text, headers=headers, allow_redirects=False, timeout=15)
         
-        # --- TRƯỜNG HỢP 1: SERVER TRẢ VỀ MÃ CHUYỂN HƯỚNG (301, 302) ---
         if response.status_code in [301, 302, 303, 307]:
             final_link = response.headers.get('Location')
-            await status_msg.edit_text(f"✅ **LINK GỐC (Header):**\n\n`{final_link}`", parse_mode="Markdown")
-            return
-
-        # --- TRƯỜNG HỢP 2: SERVER TRẢ VỀ 200 (CÓ THỂ LÀ HTML REDIRECT) ---
-        if response.status_code == 200:
-            html_content = response.text
+            await status_msg.edit_text(f"✅ **LINK GỐC:**\n`{final_link}`", parse_mode="Markdown")
+        elif response.status_code == 200:
+            # Code xử lý HTML Redirect (như cũ)
+            html = response.text
+            import re
+            link = None
+            m = re.search(r'window\.location\.href\s*=\s*["\'](.*?)["\']', html)
+            if m: link = m.group(1)
             
-            # Debug: In ra tiêu đề trang xem nó đang ở đâu
-            page_title = "Không tìm thấy tiêu đề"
-            title_match = re.search(r'<title>(.*?)</title>', html_content, re.IGNORECASE)
-            if title_match:
-                page_title = title_match.group(1)
-            
-            # Tìm link trong thẻ meta refresh (ví dụ: content="0;url=xyz")
-            meta_refresh = re.search(r'content=["\']\d+;\s*url=(.*?)["\']', html_content, re.IGNORECASE)
-            
-            # Tìm link window.location trong Javascript
-            js_redirect = re.search(r'window\.location\.href\s*=\s*["\'](.*?)["\']', html_content, re.IGNORECASE)
-            
-            final_link = None
-            if meta_refresh:
-                final_link = meta_refresh.group(1)
-            elif js_redirect:
-                final_link = js_redirect.group(1)
-            
-            if final_link:
-                await status_msg.edit_text(f"✅ **LINK GỐC (HTML):**\n\n`{final_link}`", parse_mode="Markdown")
+            if link:
+                 await status_msg.edit_text(f"✅ **LINK GỐC:**\n`{link}`", parse_mode="Markdown")
             else:
-                # Nếu không thấy link, báo lỗi kèm Tiêu đề trang để debug
-                await status_msg.edit_text(f"❌ **THẤT BẠI!** (Status 200)\n\nBot đang kẹt ở trang: **{page_title}**\n\n👉 Có thể Cookie hết hạn hoặc bị Cloudflare chặn.")
-        
+                 await status_msg.edit_text("❌ Cookie có thể đã chết. Hãy dùng /setcookie để đổi cái mới!")
         else:
             await status_msg.edit_text(f"❌ Lỗi HTTP: {response.status_code}")
 
     except Exception as e:
-        await status_msg.edit_text(f"❌ Lỗi kết nối: {e}")
+        await status_msg.edit_text(f"❌ Lỗi: {e}")
 
 def register_feature7(app):
+    app.add_handler(CommandHandler("setcookie", command_setcookie)) # <--- Đăng ký lệnh mới
     app.add_handler(CommandHandler("bat", command_bat))
     app.add_handler(CommandHandler("tat", command_tat))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex(r"vuotlink\.vip"), bypass_logic), group=10)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.Regex(r'^/') & filters.Regex(r"vuotlink\.vip"), bypass_logic), group=10)
