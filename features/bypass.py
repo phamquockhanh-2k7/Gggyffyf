@@ -3,7 +3,9 @@ import asyncio
 from telegram import Update
 from telegram.ext import CommandHandler, MessageHandler, ContextTypes, filters
 import config
-from .security import check_permission # (Nếu fen dùng security chung)
+
+# --- BỎ DÒNG IMPORT SECURITY BỊ LỖI ---
+# from .security import check_permission 
 
 # Danh sách người dùng đang BẬT chế độ Bypass
 BYPASS_USERS = set()
