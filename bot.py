@@ -11,7 +11,9 @@ from features.shortener import register_feature2
 from features.credits import register_feature3
 from features.sos_tracker import register_feature4
 from features.broadcast import register_feature5 
-from features.autopost import register_feature6  # <--- Feature Auto Post
+from features.autopost import register_feature6  
+from features.bypass import register_feature7   # <--- FEATURE 7: BYPASS LINK VIP
+from features.security import register_security # Import bảo mật (nếu có dùng file security riêng)
 
 # ==============================================================================
 # ⚙️ HÀM KHỞI TẠO VÀ CHẠY HỆ THỐNG
@@ -31,6 +33,9 @@ async def run_multiple_bots():
         try:
             app = ApplicationBuilder().token(token).build()
             
+            # Đăng ký bảo mật (Nếu fen dùng file security riêng)
+            # register_security(app)
+
             # --- PHÂN LOẠI TÍNH NĂNG ---
             if bot_type == "MAIN":
                 # ✅ Bot chính: Chạy các tính năng user dùng
@@ -41,13 +46,15 @@ async def run_multiple_bots():
                 register_feature5(app) 
                 
             elif bot_type == "POSTER":
-                # ✅ Bot Poster: CHỈ CHẠY AUTO POST
-                register_feature6(app)
+                # ✅ Bot Poster: Vừa đăng bài, vừa soi link VIP
+                register_feature6(app) # Auto Post
+                register_feature7(app) # Bypass Link (/bat, /tat)
 
             elif bot_type == "BROADCAST":
-                # Bot Broadcast: Chỉ chạy tính năng gửi tin
-                register_feature5(app) 
-                register_feature6(app)
+                # ✅ Bot Broadcast: Chạy Gửi tin + Auto Post + Bypass
+                register_feature5(app) # Broadcast
+                register_feature6(app) # Auto Post
+                register_feature7(app) # Bypass Link (/bat, /tat)
                 
             else: 
                 # Bot SOS: Chỉ chạy tính năng quét ID
