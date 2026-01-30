@@ -163,7 +163,7 @@ async def bypass_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if result.startswith("http"):
         # Format đẹp nếu là Google Drive
-        display_link = f"`{result}`"
+        display_link = f"{result}"
         if "drive.google.com" in result:
             display_link = f"📂 **GOOGLE DRIVE:**\n{display_link}"
             
