@@ -105,7 +105,7 @@ async def bypass_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if response.status_code in [301, 302, 303, 307]:
             final_link = response.headers.get('Location')
-            await status_msg.edit_text(f"✅ **LINK GỐC:**\n`{final_link}`", parse_mode="Markdown")
+            await status_msg.edit_text(f"✅ **LINK GỐC:**\n**{final_link}**", parse_mode="Markdown")
         elif response.status_code == 200:
             # Code xử lý HTML Redirect (như cũ)
             html = response.text
@@ -115,7 +115,7 @@ async def bypass_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if m: link = m.group(1)
             
             if link:
-                 await status_msg.edit_text(f"✅ **LINK GỐC:**\n`{link}`", parse_mode="Markdown")
+                 await status_msg.edit_text(f"✅ **LINK GỐC:**\n\n**{link}**", parse_mode="Markdown")
             else:
                  await status_msg.edit_text("❌ Cookie có thể đã chết. Hãy dùng /setcookie để đổi cái mới!")
         else:
