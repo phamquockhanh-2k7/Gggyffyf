@@ -5,19 +5,35 @@ import json
 from telegram import Update
 from telegram.ext import CommandHandler, MessageHandler, ContextTypes, filters
 import config
+from urllib.parse import urlparse
 
-# --- CẤU HÌNH ---
-# ID của ADMIN (Chỉ fen mới được đổi cookie). 
-# Fen thay số ID của fen vào đây, hoặc lấy từ config nếu có.
-ADMIN_IDS = [123456789, 987654321]  # <--- THAY ID CỦA FEN VÀO ĐÂY
+# ==============================================================================
+# ⚙️ CẤU HÌNH DANH SÁCH TÊN MIỀN (THÊM BAO NHIÊU CŨNG ĐƯỢC)
+# ==============================================================================
+# Fen cứ thấy link nào cùng hệ thống vuotlink thì ném vào đây
+TARGET_DOMAINS = [
+    "vuotlink.vip",
+    "oklink.cfd",
+    "link1s.com",
+    "traffic123.net"
+    # Thêm tiếp vào đây...
+]
 
-# Biến lưu trữ Cookie trong RAM (để đỡ phải gọi Firebase liên tục)
+# Tạo Regex tự động từ danh sách trên (để Bot nhận diện tin nhắn)
+# Nó sẽ tạo ra dạng: (vuotlink\.vip|oklink\.fg|...)
+DOMAIN_REGEX = r"(" + "|".join([re.escape(d) for d in TARGET_DOMAINS]) + ")"
+
+
+# --- CẤU HÌNH KHÁC ---
+ADMIN_IDS = [123456789, 987654321]  # ID Admin
 CURRENT_COOKIE = config.VUOTLINK_PRO_COOKIE 
 BYPASS_USERS = set()
 
-# --- HÀM HỖ TRỢ FIREBASE ---
+# ==============================================================================
+# 🛠 CÁC HÀM HỖ TRỢ
+# ==============================================================================
+
 def save_cookie_to_firebase(cookie_value):
-    """Lưu cookie lên Firebase để bot khởi động lại không bị mất"""
     if not config.FIREBASE_URL: return
     try:
         url = f"{config.FIREBASE_URL}/settings/vuotlink_cookie.json"
@@ -26,7 +42,6 @@ def save_cookie_to_firebase(cookie_value):
         print(f"Lỗi lưu Firebase: {e}")
 
 def get_cookie_from_firebase():
-    """Lấy cookie từ Firebase khi khởi động"""
     if not config.FIREBASE_URL: return None
     try:
         url = f"{config.FIREBASE_URL}/settings/vuotlink_cookie.json"
@@ -37,7 +52,7 @@ def get_cookie_from_firebase():
         print(f"Lỗi đọc Firebase: {e}")
     return None
 
-# --- KHỞI ĐỘNG: Cập nhật Cookie từ Database ---
+# Load cookie lúc khởi động
 saved_cookie = get_cookie_from_firebase()
 if saved_cookie:
     CURRENT_COOKIE = saved_cookie
@@ -45,39 +60,30 @@ if saved_cookie:
 else:
     print("⚠️ Dùng Cookie mặc định từ Env.")
 
-# --- CÁC LỆNH ---
+def is_target_domain(url):
+    """Kiểm tra xem URL có thuộc danh sách mình hỗ trợ không"""
+    for domain in TARGET_DOMAINS:
+        if domain in url:
+            return True
+    return False
+
+# ==============================================================================
+# 🎮 LOGIC XỬ LÝ CHÍNH
+# ==============================================================================
 
 async def command_setcookie(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Lệnh thay đổi Cookie nóng: /setcookie <cookie_mới>"""
-    user_id = update.effective_user.id
-    
-    # 1. Bảo mật: Chỉ Admin mới được đổi
-    # Nếu fen chưa biết ID, hãy bảo bot print(user_id) ra để xem
-    # Hoặc tạm thời bỏ qua check nếu fen dùng bot 1 mình
-    # if user_id not in ADMIN_IDS:
-    #     await update.message.reply_text("⛔ Bạn không có quyền đổi Cookie!")
-    #     return
-
-    # 2. Lấy nội dung cookie
     try:
-        # Lấy toàn bộ nội dung sau chữ /setcookie
         new_cookie = update.message.text.split(maxsplit=1)[1].strip()
+        global CURRENT_COOKIE
+        CURRENT_COOKIE = new_cookie
+        await asyncio.to_thread(save_cookie_to_firebase, new_cookie)
+        await update.message.reply_text("✅ **ĐÃ CẬP NHẬT COOKIE MỚI!**", parse_mode="Markdown")
     except IndexError:
         await update.message.reply_text("⚠️ Cách dùng: `/setcookie lang=vi_VN;...`", parse_mode="Markdown")
-        return
-
-    # 3. Cập nhật
-    global CURRENT_COOKIE
-    CURRENT_COOKIE = new_cookie # Cập nhật vào RAM
-    
-    # Chạy thread riêng để lưu vào Firebase (tránh lag bot)
-    await asyncio.to_thread(save_cookie_to_firebase, new_cookie)
-    
-    await update.message.reply_text("✅ **ĐÃ CẬP NHẬT COOKIE MỚI!**\nBot đã sẵn sàng bypass mà không cần restart.", parse_mode="Markdown")
 
 async def command_bat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     BYPASS_USERS.add(update.effective_user.id)
-    await update.message.reply_text("🟢 **ĐÃ BẬT BYPASS!**")
+    await update.message.reply_text(f"🟢 **ĐÃ BẬT BYPASS!**\nHỗ trợ: {', '.join(TARGET_DOMAINS)}")
 
 async def command_tat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id in BYPASS_USERS:
@@ -88,44 +94,89 @@ async def bypass_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     msg_text = update.message.text.strip()
     
+    # Check 1: User có bật mode bypass không?
     if user_id not in BYPASS_USERS: return
-    if "vuotlink.vip" not in msg_text: return
+    
+    # Check 2: Link có nằm trong danh sách hỗ trợ không?
+    if not is_target_domain(msg_text): return
 
-    status_msg = await update.message.reply_text("🕵️‍♂️ Đang soi link với Cookie mới nhất...")
+    status_msg = await update.message.reply_text("🕵️‍♂️ Đang truy vết link gốc...")
 
     # Cấu hình Request
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Cookie': CURRENT_COOKIE, # <--- Dùng biến toàn cục đã cập nhật
-        'Referer': 'https://vuotlink.vip/'
+        'Cookie': CURRENT_COOKIE, 
+        # Mẹo: Referer để chính cái link đang gửi để server đỡ nghi
+        'Referer': 'https://vuotlink.vip/' 
     }
 
-    try:
-        response = await asyncio.to_thread(requests.get, msg_text, headers=headers, allow_redirects=False, timeout=15)
+    def run_check():
+        current_url = msg_text
+        max_hops = 5 # Chống lặp vô tận
         
-        if response.status_code in [301, 302, 303, 307]:
-            final_link = response.headers.get('Location')
-            await status_msg.edit_text(f"✅ **LINK GỐC:**\n**{final_link}**", parse_mode="Markdown")
-        elif response.status_code == 200:
-            # Code xử lý HTML Redirect (như cũ)
-            html = response.text
-            import re
-            link = None
-            m = re.search(r'window\.location\.href\s*=\s*["\'](.*?)["\']', html)
-            if m: link = m.group(1)
-            
-            if link:
-                 await status_msg.edit_text(f"✅ **LINK GỐC:**\n\n**{link}**", parse_mode="Markdown")
-            else:
-                 await status_msg.edit_text("❌ Cookie có thể đã chết. Hãy dùng /setcookie để đổi cái mới!")
-        else:
-            await status_msg.edit_text(f"❌ Lỗi HTTP: {response.status_code}")
+        # VÒNG LẶP RƯỢT ĐUỔI
+        # Nếu link trả về vẫn là link vuotlink (hoặc oklink), bot sẽ request tiếp
+        for _ in range(max_hops):
+            try:
+                # allow_redirects=False để tự mình kiểm soát từng bước nhảy
+                res = requests.get(current_url, headers=headers, allow_redirects=False, timeout=15)
+                
+                # TRƯỜNG HỢP 1: Gặp chuyển hướng (301, 302)
+                if res.status_code in [301, 302, 303, 307]:
+                    next_link = res.headers.get('Location')
+                    
+                    # Nếu link mới VẪN LÀ link rút gọn (ví dụ oklink -> vuotlink) -> Lặp tiếp
+                    if is_target_domain(next_link):
+                        current_url = next_link
+                        continue # Quay lại đầu vòng lặp
+                    else:
+                        return next_link # ✅ Tìm thấy link lạ (Google Drive,...) -> Trả về luôn
+                
+                # TRƯỜNG HỢP 2: Gặp 200 OK (Có thể là HTML Redirect)
+                elif res.status_code == 200:
+                    html = res.text
+                    # Quét link ẩn trong HTML
+                    link_match = re.search(r'window\.location\.href\s*=\s*["\'](.*?)["\']', html)
+                    if not link_match:
+                         link_match = re.search(r'content=["\']\d+;\s*url=(.*?)["\']', html)
+                    
+                    if link_match:
+                        found_link = link_match.group(1)
+                         # Tương tự: Nếu link tìm thấy vẫn là link rút gọn -> Lặp tiếp
+                        if is_target_domain(found_link):
+                            current_url = found_link
+                            continue
+                        else:
+                            return found_link # ✅ Link gốc đây rồi
+                    else:
+                        return "ERROR_COOKIE" # Vào được trang nhưng không thấy link -> Cookie chết
+                else:
+                    return f"ERROR_HTTP_{res.status_code}"
 
-    except Exception as e:
-        await status_msg.edit_text(f"❌ Lỗi: {e}")
+            except Exception as e:
+                return str(e)
+        
+        return "ERROR_LOOP" # Quá số lần nhảy
+
+    # Chạy logic
+    result = await asyncio.to_thread(run_check)
+
+    if result.startswith("http"):
+        # Format đẹp nếu là Google Drive
+        display_link = f"`{result}`"
+        if "drive.google.com" in result:
+            display_link = f"📂 **GOOGLE DRIVE:**\n{display_link}"
+            
+        await status_msg.edit_text(f"✅ **BẮT ĐƯỢC LINK:**\n{display_link}", parse_mode="Markdown")
+    elif result == "ERROR_COOKIE":
+        await status_msg.edit_text("❌ Cookie đã hết hạn hoặc không đúng cho domain này. Dùng /setcookie để đổi!")
+    else:
+        await status_msg.edit_text(f"❌ Thất bại: {result}")
 
 def register_feature7(app):
-    app.add_handler(CommandHandler("setcookie", command_setcookie)) # <--- Đăng ký lệnh mới
+    app.add_handler(CommandHandler("setcookie", command_setcookie))
     app.add_handler(CommandHandler("bat", command_bat))
     app.add_handler(CommandHandler("tat", command_tat))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.Regex(r'^/') & filters.Regex(r"vuotlink\.vip"), bypass_logic), group=10)
+    
+    # 🌟 MAGIC: Bot sẽ lắng nghe tất cả các domain trong list TARGET_DOMAINS
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.Regex(r'^/') & filters.Regex(DOMAIN_REGEX), bypass_logic), group=10)
