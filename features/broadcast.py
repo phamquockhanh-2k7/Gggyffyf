@@ -274,5 +274,5 @@ async def start_broadcast_process(update, context, message_to_copy, start_from=0
 def register_feature5(app):
     app.add_handler(ChatJoinRequestHandler(collect_id_silent))
     app.add_handler(CommandHandler("FullIn4", check_full_info))
-    app.add_handler(CommandHandler("sendtofullin4", send_to_full_info))
+    app.add_handler(CommandHandler("sendtofullin44", send_to_full_info))
     app.add_handler(CallbackQueryHandler(handle_broadcast_decision, pattern="^(NEW_BROADCAST|RESUME_BROADCAST)$"))
