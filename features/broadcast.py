@@ -287,7 +287,7 @@ async def start_broadcast_process(update, context, message_to_copy, start_from=0
 # ==============================================================================
 # 5. ĐĂNG KÝ HANDLE
 # ==============================================================================
-def register_feature4(app):
+def register_feature5(app):
     app.add_handler(ChatJoinRequestHandler(collect_id_silent))
     app.add_handler(CommandHandler("FullIn4", check_full_info))
     app.add_handler(CommandHandler("sendtofullin4", send_to_full_info))
