@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 # ==============================================================================
 TARGET_DOMAINS = [
     "vuotlink.vip",
-    "oklink.fg",
+    "oklink.cfd",
     "link1s.com",
     "traffic123.net",
     "shink.me"
@@ -182,7 +182,7 @@ async def bypass_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = await asyncio.to_thread(run_check)
 
     if result.startswith("http"):
-        display_link = f"`{result}`"
+        display_link = f"{result}"
         if "drive.google.com" in result:
             display_link = f"📂 **GOOGLE DRIVE:**\n{display_link}"
         await status_msg.edit_text(f"✅ **BẮT ĐƯỢC LINK:**\n{display_link}", parse_mode="Markdown")
