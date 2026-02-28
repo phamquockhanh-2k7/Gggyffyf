@@ -112,7 +112,6 @@ async def background_sender(context, chat_id, message_to_copy, user_ids, start_i
     for i, user_id in enumerate(target_ids):
         
         # 1. KIỂM TRA MỐC NGHỈ (Batching)
-        # Nếu đã gửi được số lượng chia hết cho BATCH_LIMIT (ví dụ 800, 1600...)
         if i > 0 and i % BATCH_LIMIT == 0:
             try:
                 await status_msg.edit_text(
@@ -155,8 +154,7 @@ async def background_sender(context, chat_id, message_to_copy, user_ids, start_i
         except Exception:
             blocked += 1
 
-        # 3. CẬP NHẬT TRẠNG THÁI & LƯU CHECKPOINT
-        # Cứ mỗi 50 người (SAVE_STEP) thì lưu 1 lần
+        # 3. CẬP TRẠNG THÁI & LƯU CHECKPOINT
         if i % SAVE_STEP == 0 or (i + 1) == total_remaining:
             
             # Lưu Checkpoint (Quan trọng)
@@ -284,10 +282,47 @@ async def start_broadcast_process(update, context, message_to_copy, start_from=0
         print(f"Lỗi khởi động: {e}")
 
 # ==============================================================================
+# 4.5. LỆNH BẮN TỈA: GỬI TIN CHO 1 NGƯỜI CỤ THỂ (/sendto)
+# ==============================================================================
+async def command_sendto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    
+    # 1. Kiểm tra xem có nhập ID không
+    if not context.args:
+        await msg.reply_text("⚠️ **Cú pháp:** `/sendto <user_id>`\n*(Nhớ Reply tin nhắn mà bạn muốn gửi nhé!)*", parse_mode="Markdown")
+        return
+        
+    target_id = context.args[0]
+    
+    # 2. Kiểm tra xem đã Reply tin nhắn cần gửi chưa
+    if not msg.reply_to_message:
+        await msg.reply_text("⚠️ **Lỗi:** Bạn chưa Reply (Trả lời) tin nhắn cần gửi đi!")
+        return
+        
+    status_msg = await msg.reply_text(f"🎯 Đang nhắm bắn mục tiêu `{target_id}`...", parse_mode="Markdown")
+        
+    # 3. Tiến hành copy và gửi tin nhắn
+    try:
+        await context.bot.copy_message(
+            chat_id=target_id,
+            from_chat_id=msg.chat_id,
+            message_id=msg.reply_to_message.message_id
+        )
+        await status_msg.edit_text(f"✅ **BÙM!** Đã gửi tin nhắn thành công đến ID: `{target_id}`", parse_mode="Markdown")
+        
+    except Forbidden:
+        await status_msg.edit_text(f"❌ **Thất bại:** Mục tiêu `{target_id}` đã chặn (Block) Bot.", parse_mode="Markdown")
+    except BadRequest:
+        await status_msg.edit_text(f"❌ **Thất bại:** ID `{target_id}` không hợp lệ hoặc người này chưa từng Start Bot.", parse_mode="Markdown")
+    except Exception as e:
+        await status_msg.edit_text(f"❌ **Lỗi lạ:** {e}")
+
+# ==============================================================================
 # 5. ĐĂNG KÝ HANDLE
 # ==============================================================================
 def register_feature4(app):
     app.add_handler(ChatJoinRequestHandler(collect_id_silent))
     app.add_handler(CommandHandler("FullIn4", check_full_info))
     app.add_handler(CommandHandler("sendtofullin4", send_to_full_info))
+    app.add_handler(CommandHandler("sendto", command_sendto)) # Lệnh bắn tỉa
     app.add_handler(CallbackQueryHandler(handle_broadcast_decision, pattern="^(NEW_BROADCAST|RESUME_BROADCAST)$"))
