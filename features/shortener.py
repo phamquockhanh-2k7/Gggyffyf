@@ -38,7 +38,7 @@ async def generate_shortened_content(url):
 
     # Nội dung Caption (Để dạng văn bản thường để cho vào thẻ PRE)
     raw_content = (
-        f"**Link mua + vượt (mua rẻ hơn) :** \n {t_checklink}\n"
+        f"**Link mua + vượt .(mua rẻ hơn) :** \n {t_checklink}\n"
         f"**Link mua 2 :** \n {t2}\n"
         f"**Link mua 3 :**\n {t3}\n"
         f"**Link vượt phụ :** \n {t1}\n"
