@@ -6,12 +6,8 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 import config
 
-# ==============================================================================
-# ⚙️ CẤU HÌNH DATABASE
-# ==============================================================================
-BASE_URL = config.FIREBASE_URL
-BROADCAST_DB = f"{BASE_URL}/broadcast_channels"
-HISTORY_DB = f"{BASE_URL}/broadcast_history"
+import db
+
 RETENTION_PERIOD = 259200 
 
 async def active_system(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -33,13 +29,12 @@ def is_user_allowed(context):
 
 async def clean_old_history():
     try:
-        res = await asyncio.to_thread(requests.get, f"{HISTORY_DB}.json")
-        data = res.json()
+        data = await db.get_broadcast_history()
         if not data: return
         current_time = int(time.time())
         for key, content in data.items():
             if current_time - content.get('time', 0) > RETENTION_PERIOD:
-                await asyncio.to_thread(requests.delete, f"{HISTORY_DB}/{key}.json")
+                await db.delete_broadcast_history(key)
     except: pass
 
 async def undo_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -51,10 +46,10 @@ async def undo_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if msg.reply_to_message:
         reply_id = str(msg.reply_to_message.message_id)
         try:
-            res = await asyncio.to_thread(requests.get, f"{HISTORY_DB}/{reply_id}.json")
-            target_data = res.json()
+            history = await db.get_broadcast_history()
+            target_data = history.get(reply_id)
             if target_data:
-                await asyncio.to_thread(requests.delete, f"{HISTORY_DB}/{reply_id}.json")
+                await db.delete_broadcast_history(reply_id)
         except: pass
     elif context.user_data.get('last_broadcast_history'):
         target_data = {'sent_to': context.user_data.get('last_broadcast_history')}
@@ -87,7 +82,7 @@ async def add_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text("❌ Forward bài từ Kênh vào đây để thêm.")
         return
     try:
-        await asyncio.to_thread(requests.put, f"{BROADCAST_DB}/{update.effective_chat.id}.json", json=update.effective_chat.title or "Group")
+        await db.add_broadcast_channel(update.effective_chat.id)
         await msg.reply_text(f"✅ Đã thêm!", parse_mode="Markdown")
     except: pass
 
@@ -95,8 +90,7 @@ async def show_delete_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_user_allowed(context): return
 
     try:
-        res = await asyncio.to_thread(requests.get, f"{BROADCAST_DB}.json")
-        data = res.json()
+        data = await db.get_broadcast_channels()
         if not data: return await update.message.reply_text("📭 Trống.")
         keyboard = [[InlineKeyboardButton(f"❌ {name}", callback_data=f"DEL_ID_{c_id}")] for c_id, name in data.items()]
         keyboard.append([InlineKeyboardButton("🗑 XÓA TẤT CẢ", callback_data="DEL_ALL"), InlineKeyboardButton("Đóng", callback_data="CLOSE_MENU")])
@@ -111,11 +105,12 @@ async def handle_delete_callback(update: Update, context: ContextTypes.DEFAULT_T
     data = query.data
     if data == "CLOSE_MENU": return await query.message.delete()
     if data == "DEL_ALL":
-        await asyncio.to_thread(requests.delete, f"{BROADCAST_DB}.json")
+        channels = await db.get_broadcast_channels()
+        for cid in channels.keys(): await db.remove_broadcast_channel(cid)
         return await query.edit_message_text("✅ Đã xóa hết.")
     if data.startswith("DEL_ID_"):
         cid = data.split("DEL_ID_")[1]
-        await asyncio.to_thread(requests.delete, f"{BROADCAST_DB}/{cid}.json")
+        await db.remove_broadcast_channel(cid)
         await query.edit_message_text("✅ Đã xóa.")
 
 async def broadcast_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -158,8 +153,7 @@ async def process_album_later(media_group_id, context, from_chat_id):
     del buffer[media_group_id]
     
     try:
-        res = await asyncio.to_thread(requests.get, f"{BROADCAST_DB}.json")
-        targets = res.json()
+        targets = await db.get_broadcast_channels()
     except: targets = {}
     if not targets: return
 
@@ -189,11 +183,10 @@ async def process_album_later(media_group_id, context, from_chat_id):
             error_details.append(f"- ID {target_id}: {str(e)}")
 
     if sent_log_for_undo:
-        history_entry = {"time": int(time.time()), "sent_to": sent_log_for_undo}
-        for source_id in msg_ids:
-            try:
-                await asyncio.to_thread(requests.put, f"{HISTORY_DB}/{source_id}.json", json=history_entry)
-            except: pass
+        try:
+            for source_id in msg_ids:
+                await db.update_broadcast_history(source_id, int(time.time()), sent_log_for_undo)
+        except: pass
 
     msg_report = f"✅ **Album ({len(msg_ids)} ảnh):**\n- Thành công: {success_count}\n- Thất bại: {fail_count}"
     if error_details:
@@ -216,8 +209,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if msg.forward_from_chat:
             fwd_chat = msg.forward_from_chat
             try:
-                url = f"{BROADCAST_DB}/{fwd_chat.id}.json"
-                await asyncio.to_thread(requests.put, url, json=fwd_chat.title or "Kênh")
+                await db.add_broadcast_channel(fwd_chat.id)
                 await msg.reply_text(f"🎯 Thêm: **{fwd_chat.title}**", parse_mode="Markdown")
             except: pass
         else:
@@ -242,8 +234,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # --- GỬI TIN LẺ ---
     try:
-        res = await asyncio.to_thread(requests.get, f"{BROADCAST_DB}.json")
-        targets = res.json()
+        targets = await db.get_broadcast_channels()
     except: targets = {}
     if not targets: return await msg.reply_text("⚠️ List trống.")
     
@@ -264,8 +255,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except: pass
     
     if sent_log:
-        entry = {"time": int(time.time()), "sent_to": sent_log}
-        await asyncio.to_thread(requests.put, f"{HISTORY_DB}/{msg.message_id}.json", json=entry)
+        await db.update_broadcast_history(msg.message_id, int(time.time()), sent_log)
         context.user_data['last_broadcast_history'] = sent_log
 
     await status_msg.edit_text(f"✅ Xong tin lẻ ({len(sent_log)}/{len(targets)}).")

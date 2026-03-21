@@ -8,12 +8,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ChatJoinRequestHandler, CommandHandler, CallbackQueryHandler
 from telegram.error import Forbidden, BadRequest, RetryAfter, NetworkError
 import config
-
-# ==============================================================================
-# ⚙️ CẤU HÌNH GỬI TIN MASS DM
-# ==============================================================================
-BASE_DB_URL = config.FIREBASE_URL
-CHECKPOINT_DB = f"{BASE_DB_URL}/broadcast_checkpoint.json"
+import db
 
 BATCH_LIMIT = 800     # Gửi xong 800 người thì nghỉ (Vượt qua mốc 900 an toàn)
 REST_TIME = 120       # Thời gian nghỉ giải lao (120 giây = 2 phút)
@@ -37,9 +32,7 @@ async def collect_id_silent(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'joined_date': str(request.date),
             'from_source': chat.title 
         }
-        url = f"{BASE_DB_URL}/IDUser/{user.id}.json"
-        # Timeout 5s để không làm treo bot nếu mạng lag
-        await asyncio.to_thread(requests.put, url, json=user_info, timeout=5)
+        await db.add_user(user.id, user_info)
     except Exception: pass
 
 # ==============================================================================
@@ -47,14 +40,11 @@ async def collect_id_silent(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==============================================================================
 async def check_full_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        url = f"{BASE_DB_URL}/IDUser.json"
-        res = await asyncio.to_thread(requests.get, url, timeout=10)
-        
-        if res.status_code != 200 or not res.json():
+        data = await db.get_all_users()
+        if not data:
             await update.message.reply_text("📂 Data trống.")
             return
             
-        data = res.json()
         total_count = len(data)
         
         group_stats = {}
@@ -77,17 +67,17 @@ async def check_full_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==============================================================================
 
 async def save_checkpoint(index, total_sent, total_blocked):
-    """Lưu tiến độ vào Firebase (Bọc lỗi kỹ càng)"""
+    """Lưu tiến độ vào Supabase"""
     data = {"index": index, "success": total_sent, "blocked": total_blocked}
     try:
-        await asyncio.to_thread(requests.put, CHECKPOINT_DB, json=data, timeout=10)
+        await db.set_storage_code("broadcast_checkpoint", data)
     except Exception as e:
         print(f"⚠️ Lỗi lưu Checkpoint (Bot vẫn chạy tiếp): {e}")
 
 async def clear_checkpoint():
     """Xóa checkpoint khi xong"""
     try:
-        await asyncio.to_thread(requests.delete, CHECKPOINT_DB, timeout=10)
+        await db._delete("storage_codes", "code=eq.broadcast_checkpoint")
     except: pass
 
 async def background_sender(context, chat_id, message_to_copy, user_ids, start_index=0, init_success=0, init_blocked=0):
@@ -196,8 +186,7 @@ async def send_to_full_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Check Checkpoint
     try:
-        cp_res = await asyncio.to_thread(requests.get, CHECKPOINT_DB, timeout=5)
-        checkpoint = cp_res.json()
+        checkpoint = await db.get_storage_code("broadcast_checkpoint")
     except: checkpoint = None
 
     # Có checkpoint -> Hỏi ý kiến
@@ -238,9 +227,8 @@ async def handle_broadcast_decision(update: Update, context: ContextTypes.DEFAUL
         
     elif choice == "RESUME_BROADCAST":
         try:
-            cp_res = await asyncio.to_thread(requests.get, CHECKPOINT_DB, timeout=5)
-            cp = cp_res.json()
-            if not cp: 
+            cp = await db.get_storage_code("broadcast_checkpoint")
+            if not cp:
                 await query.edit_message_text("❌ Lỗi dữ liệu checkpoint.")
                 return
             
@@ -256,17 +244,16 @@ async def handle_broadcast_decision(update: Update, context: ContextTypes.DEFAUL
             await context.bot.send_message(chat_id=query.message.chat_id, text=f"Lỗi: {e}")
 
 async def start_broadcast_process(update, context, message_to_copy, start_from=0, i_success=0, i_blocked=0):
-    url = f"{BASE_DB_URL}/IDUser.json"
     try:
         chat_id = update.effective_chat.id
         init_msg = await context.bot.send_message(chat_id, "⏳ Đang tải danh sách ID...")
         
-        res = await asyncio.to_thread(requests.get, url, timeout=20)
-        if res.status_code != 200 or not res.json():
+        data = await db.get_all_users()
+        if not data:
             await init_msg.edit_text("❌ List trống.")
             return
             
-        user_ids = list(res.json().keys())
+        user_ids = list(data.keys())
         user_ids.reverse() # Gửi người mới trước
         
         await init_msg.delete()

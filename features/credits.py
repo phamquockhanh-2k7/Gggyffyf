@@ -8,49 +8,41 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMe
 from telegram.ext import ContextTypes, CallbackQueryHandler
 import config
 
-# Đường dẫn Firebase
-FIREBASE_URL = config.FIREBASE_URL
+import db
 
 # ==============================================================================
-# 1. CÁC HÀM XỬ LÝ DATA (FIREBASE)
+# 1. CÁC HÀM XỬ LÝ DATA (SUPABASE)
 # ==============================================================================
 
 async def get_credits(user_id):
-    url = f"{FIREBASE_URL}/ref/{user_id}.json"
-    res = await asyncio.to_thread(requests.get, url)
-    return res.json() if (res.status_code == 200 and res.json() is not None) else None
+    return await db.get_credits(user_id)
 
 async def init_user_if_new(user_id):
-    current = await get_credits(user_id)
+    current = await db.get_credits(user_id)
     if current is None:
-        url = f"{FIREBASE_URL}/ref/{user_id}.json"
-        await asyncio.to_thread(requests.put, url, json=1)
+        await db.set_credits(user_id, 1)
         return 1
     return current
 
 async def add_credit(user_id, amount=1):
-    current = await get_credits(user_id) or 0
-    url = f"{FIREBASE_URL}/ref/{user_id}.json"
-    await asyncio.to_thread(requests.put, url, json=current + amount)
+    current = await db.get_credits(user_id) or 0
+    await db.set_credits(user_id, current + amount)
 
 async def deduct_credit(user_id):
-    current = await get_credits(user_id) or 0
+    current = await db.get_credits(user_id) or 0
     if current > 0:
-        url = f"{FIREBASE_URL}/ref/{user_id}.json"
-        await asyncio.to_thread(requests.put, url, json=current - 1)
+        await db.set_credits(user_id, current - 1)
         return True
     return False
 
 async def check_daily_task_status(user_id):
     today_str = datetime.datetime.now().strftime("%Y-%m-%d")
-    url = f"{FIREBASE_URL}/daily_check/{user_id}.json"
-    res = await asyncio.to_thread(requests.get, url)
-    return res.json() == today_str
+    last_check = await db.check_daily_task_status(user_id)
+    return last_check == today_str
 
 async def mark_daily_task_done(user_id):
     today_str = datetime.datetime.now().strftime("%Y-%m-%d")
-    url = f"{FIREBASE_URL}/daily_check/{user_id}.json"
-    await asyncio.to_thread(requests.put, url, json=today_str)
+    await db.mark_daily_task_done(user_id, today_str)
 
 # ==============================================================================
 # 2. XỬ LÝ NHIỆM VỤ
@@ -141,18 +133,14 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # --- DEBUG MODE BẮT ĐẦU ---
         # 1. Thử tìm trong thư mục /shared/
-        url_1 = f"{FIREBASE_URL}/shared/{alias}.json"
-        res1 = await asyncio.to_thread(requests.get, url_1)
-        data = res1.json()
+        data = await db.get_shared(alias)
         debug_msg = f"🔍 <b>DEBUG REPORT:</b>\n🆔 ID: <code>{alias}</code>\n"
         debug_msg += f"🔗 URL 1: <code>.../shared/{alias}.json</code> -> {'✅ CÓ' if data else '❌ KHÔNG'}\n"
 
         # 2. Nếu không thấy, tìm ở thư mục gốc
         if not data:
-            url_2 = f"{FIREBASE_URL}/{alias}.json"
-            res2 = await asyncio.to_thread(requests.get, url_2)
-            data = res2.json()
-            debug_msg += f"🔗 URL 2: <code>.../{alias}.json</code> -> {'✅ CÓ' if data else '❌ KHÔNG'}\n"
+            data = await db.get_storage_code(alias)
+            debug_msg += f"🔗 URL 2: <code>root/{alias}.json</code> -> {'✅ CÓ' if data else '❌ KHÔNG'}\n"
 
         # 3. XỬ LÝ KẾT QUẢ
         if data:

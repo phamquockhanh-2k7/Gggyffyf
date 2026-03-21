@@ -29,7 +29,8 @@ async def get_short_link(long_url, api_url, api_key, original_domain, mask_domai
     except: return "Lỗi Mạng"
 
 async def generate_shortened_content(url):
-    t1, t2, t3 = await asyncio.gather(
+    t_checklink, t1, t2, t3 = await asyncio.gather(
+        get_short_link(url, config.URL_API_CHECKLINK, config.API_KEY_CHECKLINK, config.ORIGIN_DOMAIN_CHECKLINK, config.DOMAIN_MASK_CHECKLINK),
         get_short_link(url, config.URL_API_VUOTLINK, config.API_KEY_VUOTLINK, config.ORIGIN_DOMAIN_VUOTLINK, config.DOMAIN_MASK_VUOTLINK),
         get_short_link(url, config.URL_API_LINKX, config.API_KEY_LINKX, config.ORIGIN_DOMAIN_LINKX, config.DOMAIN_MASK_LINKX),
         get_short_link(url, config.URL_API_ANON, config.API_KEY_ANON, config.ORIGIN_DOMAIN_ANON, config.DOMAIN_MASK_ANON)
@@ -37,9 +38,10 @@ async def generate_shortened_content(url):
 
     # Nội dung Caption (Để dạng văn bản thường để cho vào thẻ PRE)
     raw_content = (
-        f"**Link mua:** (rẻ hơn )\n {t2}\n"
-        f"**Link mua:**\n {t3}\n"
-        f"**Link vượt:** \n {t1}\n"
+        f"**Link mua + vượt (mua rẻ hơn) :** \n {t_checklink}\n"
+        f"**Link mua 2 :** \n {t2}\n"
+        f"**Link mua 3 :**\n {t3}\n"
+        f"**Link vượt phụ :** \n {t1}\n"
         f"➖➖➖➖➖➖➖➖➖➖\n"
         f"**😘Nếu mua link hãy chọn linkx hoặc anonlink để mua giá rẻ hơn, nếu vượt link hãy dùng oklink, có thể mua nhưng sẽ đắt hơn! **\n\n"
         f"**Cách vượt Link:**  HuongDanVuotLink.vercel.app\n\n"

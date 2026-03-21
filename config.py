@@ -14,7 +14,8 @@ BROADCAST_BOT_TOKENS = get_list("LIST_TOKEN_BROADCAST")
 SOS_BOT_TOKENS = get_list("LIST_TOKEN_SOS")
 
 # 2. DATABASE & SYSTEM
-FIREBASE_URL = os.getenv("FIREBASE_URL", "")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 MAIN_CHANNEL_USERNAME = os.getenv("MAIN_CHANNEL_USERNAME", "@hoahocduong_vip")
 JOIN_LINK_CHANNEL = os.getenv("JOIN_LINK_CHANNEL", "")
 
@@ -41,6 +42,11 @@ DOMAIN_MASK_ANON = os.getenv("DOMAIN_MASK_ANON")
 URL_API_ANON = "https://anonlink.io/api"
 ORIGIN_DOMAIN_ANON = "anonlink.io"
 
+# CheckLink
+API_KEY_CHECKLINK = os.getenv("API_KEY_CHECKLINK")
+DOMAIN_MASK_CHECKLINK = os.getenv("DOMAIN_MASK_CHECKLINK")
+URL_API_CHECKLINK = "https://www.checklink.top/st"
+ORIGIN_DOMAIN_CHECKLINK = "checklink.top"
 # 5. BOT POSTER & BYPASS COOKIE <===
 POSTER_BOT_TOKEN = os.getenv("POSTER_BOT_TOKEN", "")
 VUOTLINK_PRO_COOKIE = os.getenv("VUOTLINK_PRO_COOKIE", "") # <--- QUAN TRỌNG

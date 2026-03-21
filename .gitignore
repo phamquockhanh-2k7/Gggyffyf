@@ -1,0 +1,15 @@
+# System
+.env
+__pycache__/
+*.pyc
+
+# Backup and Migration Data
+firebase_backup.json
+schema_output.json
+out_migrate.txt
+output.txt
+output2.txt
+
+# Temp Scripts
+check_auto.py
+check_keys.py

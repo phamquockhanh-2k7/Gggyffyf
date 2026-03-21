@@ -11,10 +11,8 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMe
 from telegram.ext import CommandHandler, MessageHandler, ContextTypes, CallbackQueryHandler, filters
 import config
 
-# Database URL
-DB_URL = f"{config.FIREBASE_URL}/autopost_storage"
-SETTINGS_URL = f"{config.FIREBASE_URL}/autopost_settings"
-USER_DB_URL = f"{config.FIREBASE_URL}/autopost_users" 
+import db
+
 
 # Khởi tạo Scheduler (Lên lịch) - Múi giờ Việt Nam
 TIMEZONE = pytz.timezone('Asia/Ho_Chi_Minh')
@@ -29,10 +27,9 @@ ACTIVE_USERS_CACHE = set()
 async def load_active_users():
     global ACTIVE_USERS_CACHE
     try:
-        res = await asyncio.to_thread(requests.get, f"{USER_DB_URL}.json")
-        data = res.json()
+        data = await db.get_autopost_users()
         if data:
-            ACTIVE_USERS_CACHE = set(str(k) for k in data.keys())
+            ACTIVE_USERS_CACHE = set(str(k) for k, active in data.items() if active)
         print(f"🛡 Đã tải {len(ACTIVE_USERS_CACHE)} người dùng kích hoạt.")
     except: pass
 
@@ -44,7 +41,7 @@ async def command_activenow(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if uid in ACTIVE_USERS_CACHE:
         return await update.message.reply_text("✅ Bot đã được BẬT từ trước rồi.")
     try:
-        await asyncio.to_thread(requests.put, f"{USER_DB_URL}/{uid}.json", json=True)
+        await db.update_autopost_users({uid: True})
         ACTIVE_USERS_CACHE.add(uid)
         await update.message.reply_text("🔓 **ĐÃ BẬT BOT!**\nBây giờ bạn có thể sử dụng các lệnh.", parse_mode="Markdown")
     except: await update.message.reply_text("❌ Lỗi mạng.")
@@ -53,7 +50,7 @@ async def command_turnoff(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(update.effective_user.id)
     if uid not in ACTIVE_USERS_CACHE: return 
     try:
-        await asyncio.to_thread(requests.delete, f"{USER_DB_URL}/{uid}.json")
+        await db.update_autopost_users({uid: False})
         ACTIVE_USERS_CACHE.discard(uid)
         await update.message.reply_text("📴 **ĐÃ TẮT BOT!**\nTạm biệt.", parse_mode="Markdown")
     except: pass
@@ -62,28 +59,26 @@ async def command_turnoff(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # 1. CÁC HÀM XỬ LÝ DATABASE & SCHEDULE
 # ==============================================================================
 async def get_storage():
-    try:
-        res = await asyncio.to_thread(requests.get, f"{DB_URL}.json")
-        return res.json() or {}
+    try: return await db.get_autopost_storage()
     except: return {}
 
 async def update_channel_data(chat_id, data):
-    await asyncio.to_thread(requests.patch, f"{DB_URL}/{chat_id}.json", json=data)
+    await db.update_autopost_storage(chat_id, data)
 
 async def delete_channel_data(chat_id):
-    await asyncio.to_thread(requests.delete, f"{DB_URL}/{chat_id}.json")
+    await db.delete_autopost_storage(chat_id)
 
 async def get_schedule_time():
     try:
-        res = await asyncio.to_thread(requests.get, f"{SETTINGS_URL}/schedule.json")
-        data = res.json()
-        if data and 'hour' in data and 'minute' in data:
-            return int(data['hour']), int(data['minute'])
+        # Assuming channel_id 0 serves as a global setting if there are multiple, or just take the first
+        data = await db.get_autopost_settings()
+        if data and "0" in data:
+            return int(data["0"]['hour']), int(data["0"]['minute'])
         return 0, 0 
     except: return 0, 0
 
 async def save_schedule_time(hour, minute):
-    await asyncio.to_thread(requests.put, f"{SETTINGS_URL}/schedule.json", json={"hour": hour, "minute": minute})
+    await db.update_autopost_settings(0, hour, minute)
 
 def reschedule_job(app, hour, minute):
     job_id = "daily_autopost"
@@ -270,8 +265,9 @@ async def command_xong(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("⏳ Đang lưu...")
     try:
-        current_data = (await asyncio.to_thread(requests.get, f"{DB_URL}/{cid}.json")).json()
-        current_files = current_data.get('files', []) or []
+        current_data = await db.get_autopost_storage()
+        c_data = current_data.get(cid, {}) if current_data else {}
+        current_files = c_data.get('files', []) or []
         await update_channel_data(cid, {"files": current_files + new_files})
         await update.message.reply_text(f"✅ Đã nạp thêm {len(new_files)} file.")
     except: pass

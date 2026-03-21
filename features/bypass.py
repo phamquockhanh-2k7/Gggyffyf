@@ -5,6 +5,7 @@ import json
 from telegram import Update
 from telegram.ext import CommandHandler, MessageHandler, ContextTypes, filters
 import config
+import db
 from urllib.parse import urlparse
 
 # ==============================================================================
@@ -29,23 +30,17 @@ BYPASS_USERS = set()
 # 🛠 CÁC HÀM HỖ TRỢ
 # ==============================================================================
 
-def save_cookie_to_firebase(cookie_value):
-    if not config.FIREBASE_URL: return
+async def save_cookie(cookie_value):
     try:
-        url = f"{config.FIREBASE_URL}/settings/vuotlink_cookie.json"
-        requests.put(url, json=cookie_value)
+        await db.set_storage_code("vuotlink_cookie", cookie_value)
     except Exception as e:
-        print(f"Lỗi lưu Firebase: {e}")
+        print(f"Lỗi lưu Supabase: {e}")
 
-def get_cookie_from_firebase():
-    if not config.FIREBASE_URL: return None
+async def get_cookie():
     try:
-        url = f"{config.FIREBASE_URL}/settings/vuotlink_cookie.json"
-        res = requests.get(url)
-        if res.status_code == 200 and res.json():
-            return res.json()
+        return await db.get_storage_code("vuotlink_cookie")
     except Exception as e:
-        print(f"Lỗi đọc Firebase: {e}")
+        print(f"Lỗi đọc Supabase: {e}")
     return None
 
 def json_cookie_to_string(json_input):
@@ -78,13 +73,7 @@ def json_cookie_to_string(json_input):
         print(f"Lỗi parse JSON Cookie: {e}")
         return json_input # Lỗi thì trả về nguyên gốc
 
-# Load cookie
-saved_cookie = get_cookie_from_firebase()
-if saved_cookie:
-    CURRENT_COOKIE = saved_cookie
-    print("✅ Đã load Cookie từ Firebase!")
-else:
-    print("⚠️ Dùng Cookie mặc định từ Env.")
+# Cookie is loaded dynamically in bypass_logic or command_setcookie
 
 def is_target_domain(url):
     for domain in TARGET_DOMAINS:
@@ -106,7 +95,7 @@ async def command_setcookie(update: Update, context: ContextTypes.DEFAULT_TYPE):
         global CURRENT_COOKIE
         CURRENT_COOKIE = final_cookie
         
-        await asyncio.to_thread(save_cookie_to_firebase, final_cookie)
+        await save_cookie(final_cookie)
         
         # Rút gọn cookie khi hiển thị để đỡ rối mắt
         display_cookie = final_cookie[:50] + "..." if len(final_cookie) > 50 else final_cookie
@@ -129,9 +118,13 @@ async def command_tat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def bypass_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     msg_text = update.message.text.strip()
+    global CURRENT_COOKIE
     
     if user_id not in BYPASS_USERS: return
     if not is_target_domain(msg_text): return
+
+    if not CURRENT_COOKIE:
+        CURRENT_COOKIE = await get_cookie() or config.VUOTLINK_PRO_COOKIE
 
     status_msg = await update.message.reply_text("🕵️‍♂️ Đang truy vết link gốc...")
 

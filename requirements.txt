@@ -1,7 +1,7 @@
 python-telegram-bot[job-queue]==20.1
 aiohttp
 requests==2.32.3
-firebase-admin==6.0.0
+# Supabase HTTP implementation uses aiohttp & requests natively. No admin SDKs needed.
 nest_asyncio==1.6.0
 flask
 keep_alive==0.0.1

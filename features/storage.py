@@ -16,8 +16,7 @@ import config
 # Import Relative (dấu chấm)
 from .credits import init_user_if_new, add_credit, delete_msg_job, get_credits, check_credits, cheat_credits
 
-# Firebase URL
-FIREBASE_URL = f"{config.FIREBASE_URL}/shared"
+import db
 
 def generate_alias(length=7):
     date_prefix = datetime.now().strftime("%d%m%Y")
@@ -99,12 +98,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # --- XỬ LÝ LẤY NỘI DUNG ---
         alias = command
-        url = f"{FIREBASE_URL}/{alias}.json"
         try:
-            res = await asyncio.to_thread(requests.get, url)
-            data = res.json()
+            data = await db.get_shared(alias)
             
-            if res.status_code == 200 and data:
+            if data:
                 media_group, text_content = [], []
                 for item in data:
                     if item["type"] == "photo": media_group.append(InputMediaPhoto(item["file_id"]))
@@ -112,6 +109,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     elif item["type"] == "text": text_content.append(item["file_id"])
                 
                 msgs_to_delete = []
+
+                # --- AUTO API SHORTEN (FIXED) ---
+                if context.user_data.get('current_mode') == 'API':
+                    bot_username = context.bot.username
+                    start_link_full = f"https://t.me/{bot_username}?start={alias}"
+                    
+                    # Import động để tránh circular import
+                    from .shortener import generate_shortened_content
+                    shortened_text = await generate_shortened_content(start_link_full)
+                    
+                    # ✅ 1. Link Start: 1 dòng copy được, 1 dòng click được
+                    msg_links = (
+                        f"🚀 <b>AUTO API:</b>\n"
+                        f"📋 <b>Copy:</b> <code>{start_link_full}</code>\n"
+                        f"🔗 <b>Click:</b> {start_link_full}"
+                    )
+                    await update.message.reply_text(msg_links, parse_mode="HTML")
+                    
+                    # ✅ 2. Caption: Dùng thẻ <pre> để copy nguyên khối (giống bên shortener)
+                    await update.message.reply_text(f"<pre>{shortened_text}</pre>", parse_mode="HTML")
 
                 if text_content: 
                     t_msg = await update.message.reply_text("\n\n".join(text_content), protect_content=protect)
@@ -137,26 +154,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 for m in msgs_to_delete:
                     context.job_queue.run_once(delete_msg_job, 86400, data=m.message_id, chat_id=update.effective_chat.id)
-
-                # --- AUTO API SHORTEN (FIXED) ---
-                if context.user_data.get('current_mode') == 'API':
-                    bot_username = context.bot.username
-                    start_link_full = f"https://t.me/{bot_username}?start={alias}"
-                    
-                    # Import động để tránh circular import
-                    from .shortener import generate_shortened_content
-                    shortened_text = await generate_shortened_content(start_link_full)
-                    
-                    # ✅ 1. Link Start: 1 dòng copy được, 1 dòng click được
-                    msg_links = (
-                        f"🚀 <b>AUTO API:</b>\n"
-                        f"📋 <b>Copy:</b> <code>{start_link_full}</code>\n"
-                        f"🔗 <b>Click:</b> {start_link_full}"
-                    )
-                    await update.message.reply_text(msg_links, parse_mode="HTML")
-                    
-                    # ✅ 2. Caption: Dùng thẻ <pre> để copy nguyên khối (giống bên shortener)
-                    await update.message.reply_text(f"<pre>{shortened_text}</pre>", parse_mode="HTML")
 
             else: 
                 await update.message.reply_text("❌ Liên kết không tồn tại hoặc đã bị xóa.")
@@ -212,11 +209,11 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Bạn chưa gửi nội dung nào.")
         return
     try:
-        res = await asyncio.to_thread(requests.put, f"{FIREBASE_URL}/{alias}.json", json=files)
-        if res.status_code == 200:
+        success = await db.set_shared(alias, files)
+        if success:
             link = f"https://t.me/{context.bot.username}?start={alias}"
             await update.message.reply_text(f"✅ Đã tạo link: {link}\nTổng: {len(files)} tệp.")
-        else: await update.message.reply_text("❌ Lỗi lưu trữ Firebase.")
+        else: await update.message.reply_text("❌ Lỗi lưu trữ Supabase.")
     except Exception: await update.message.reply_text("🔒 Lỗi kết nối.")
     context.user_data['current_mode'] = None
 
