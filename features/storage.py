@@ -158,6 +158,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else: 
                 await update.message.reply_text("❌ Liên kết không tồn tại hoặc đã bị xóa.")
         except Exception as e: 
+            import traceback
+            traceback.print_exc()
             print(f"Lỗi Start: {e}")
             await update.message.reply_text("🔒 Hệ thống đang bận, vui lòng quay lại sau.")
     else:
