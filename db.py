@@ -8,32 +8,39 @@ headers = {
     "Prefer": "return=representation"
 }
 
+_session = None
+
+async def get_session():
+    global _session
+    if _session is None or _session.closed:
+        _session = aiohttp.ClientSession()
+    return _session
+
 # generic GET
 async def _get(table, filter_str=None):
     url = f"{config.SUPABASE_URL}/rest/v1/{table}"
-    if filter_str:
-        url += f"?{filter_str}"
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=headers) as resp:
-            if resp.status == 200:
-                return await resp.json()
-            return None
+    if filter_str: url += f"?{filter_str}"
+    session = await get_session()
+    async with session.get(url, headers=headers) as resp:
+        if resp.status == 200:
+            return await resp.json()
+        return None
 
 # generic POST/UPSERT
 async def _upsert(table, data):
     url = f"{config.SUPABASE_URL}/rest/v1/{table}"
     upsert_headers = headers.copy()
     upsert_headers["Prefer"] = "resolution=merge-duplicates"
-    async with aiohttp.ClientSession() as session:
-        async with session.post(url, json=data if isinstance(data, list) else [data], headers=upsert_headers) as resp:
-            return resp.status in [200, 201]
+    session = await get_session()
+    async with session.post(url, json=data if isinstance(data, list) else [data], headers=upsert_headers) as resp:
+        return resp.status in [200, 201]
 
 # generic DELETE
 async def _delete(table, filter_str):
     url = f"{config.SUPABASE_URL}/rest/v1/{table}?{filter_str}"
-    async with aiohttp.ClientSession() as session:
-        async with session.delete(url, headers=headers) as resp:
-            return resp.status in [200, 204]
+    session = await get_session()
+    async with session.delete(url, headers=headers) as resp:
+        return resp.status in [200, 204]
 
 # ==== CREDITS ====
 async def get_credits(user_id):
